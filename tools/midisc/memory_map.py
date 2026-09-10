@@ -1,0 +1,229 @@
+"""midisc — Octatrack 1.40C MIDI scenes OS patch."""
+from __future__ import annotations
+
+import pathlib
+
+ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+
+BASE = 0x40000400
+
+MSC = 0x400D6600
+MSC_LEN = 16 * 8 * 32  # 4096
+STUB = 0x400D7600
+STUB_END = 0x400D7C48  # zeros through D7C3B; FF pad to vector table @D7C50
+CODE2 = 0x400D6500  # was CLIP in 1.27; lifecycle helpers
+CODE2_END = 0x400D6600
+CLIP = 0x460C9A00  # DRAM scene clipboard (not in OS image)
+# Part-Save MIDI checkpoint (session Reload); scene clip uses CLIP+0..0x100
+CKPT = CLIP + 0x200  # 4 * 144 = 0x240 bytes
+CKPT_VALID = CKPT + 0x240  # u8 bitmask parts 0..3
+# Trusted lock list with per-track slices; xf_mix walks list (not 8x30) when live.
+LOCK_MAGIC = CKPT_VALID + 4  # u32 == LOCK_MAGIC_VAL when live
+LOCK_COUNT = LOCK_MAGIC + 4  # u8 total
+LOCK_TNC = LOCK_COUNT + 1  # u8[8] per-track counts
+LOCK_TOFF = LOCK_TNC + 8  # u8[8] start index into ents
+LOCK_ENTS = LOCK_TOFF + 8  # 32*{u8 id, u8 va, u8 vb}
+LOCK_ENT_SIZE = 3
+LOCK_ENTS_MAX = 32
+LOCK_MAGIC_VAL = 0x4D53434C  # 'MSCL' — must not false-match DRAM junk
+LOCK_LAST_XF = LOCK_ENTS + LOCK_ENTS_MAX * LOCK_ENT_SIZE  # u8; 0xFF = force remix
+
+SPARSE_OFF = 0x90522
+# SAVE shadow window @ bank+part*18b2+0x9504A; sparse at +0x17A2 inside it
+SHADOW_SPARSE_OFF = 0x967EC
+SPARSE_BYTES = 144
+SPARSE_MAGIC = 0x4D53  # 'MS'
+SPARSE_MAX = 46  # (144-4)/3
+MEMCPY = 0x40020898  # stock (dst, src, n)
+
+# Same index audio uses for part window / dirty asterisk
+PART_DISP = 0x100B14CF
+LAST_PART = 0x400D7C48  # u8 past stub (moved; frees cave for reload_after)
+UNPACK_SRC = 0x400D7C49
+LAST_BANK = 0x400D7C4A
+APPLY_RET = 0x400D7C4C  # u32
+RELOAD_UI_B = 0x4005E05A  # second jsr STOCK_RELOAD (non-menu path)
+BANK_ID = 0x80000002
+BANK_WR_SWITCH_A = 0x400622AA
+BANK_WR_SWITCH_B = 0x40087D44
+BANK_WR_INIT_A = 0x4001FBD0
+BANK_WR_INIT_B = 0x40025AA2
+BANK_WR_STOCK = "23c046c82456"
+
+SENT_UNPACK = 0x400D7F00
+SENT_PACK = 0x400D7F04
+SENT_DIRTY = 0x400D7F08
+SENT_REBUILD_MASK = 0x400D7F10
+SENT_CLAMP = 0x400D7F14  # scene-lock clamp (ARP LEG/MODE/SPD/RNG)
+# SENT_XF_MIX defined with morph constants above
+
+BANK_PTR = 0x46C82456
+MIDI_FLAG = 0x80000012
+SCENE_HELD = 0x460D169C
+SCENE_ASSIGN = 0x8ED90
+PAGE_MODE = 0x460D1684
+PAT_DISP = PART_DISP  # alias — hold already used this name
+TRACK_DISP = 0x100B14CC
+
+DIRTY_OFF = 0x95048
+DIRTY_UI = 0x100B145E
+BANK_DIRTY = 0x9B332
+UI_DIRTY = 0x100F8598
+PART_SAVED = 0x9B312  # u8[4]; STOCK_SAVE sets 1; RELOAD requires it
+PART_STAGING = 0x100AB196  # STOCK_SAVE copies shadow here (4 * 0x18b2)
+
+STOCK_APPLY = 0x40009094
+APPLY_CONT = 0x4000909C  # after 8-byte prologue
+STOCK_SAVE = 0x4004A908
+STOCK_RELOAD = 0x4004AAB4
+SAVE_UI = 0x4002DD12
+RELOAD_UI = 0x4002DD56
+SAVE_ALL = 0x4002DCD0  # saves parts 0..3
+
+GATE_A = 0x400534CE
+GATE_A_STOCK = "4ab98000001266000586"
+GATE_A_LEN = 10
+AUDIO_A = 0x400534D8
+BAIL_A = 0x40053A5C
+TAIL_A = 0x40053A36
+
+GATE_B = 0x40052ECE
+GATE_B_STOCK = "4ab980000012660005b6"
+GATE_B_LEN = 10
+AUDIO_B = 0x40052ED8
+BAIL_B = 0x4005348C
+TAIL_B = 0x40053464
+
+DIAL_HOOK = 0x4004E348
+DIAL_STOCK = "71b9100b14cc"
+DIAL_LEN = 6
+DIAL_DRAW = 0x4004E382
+DIAL_LIVE_ALL = (
+    "71b9100b14cc2439460d168473b9100b14cfeb88363c18b24c031800d0812202e789"
+    "d4829282d081d0b946c82456d08c2040d1fc0008f1627190"
+)
+
+TRACK_GATE = 0x400343BC
+TRACK_AUDIO = 0x400343C4
+TRACK_ADDI = 0x400343E8
+TRACK_ADDI_STOCK = "06800008f3e2"
+TRACK_ADDI_CONT = 0x400343EE
+
+PAGE_GATE = 0x4003445E
+PAGE_AUDIO = 0x40034466
+PAGE_ADDI = 0x4003448E
+PAGE_ADDI_STOCK = "06810008f3e2"
+PAGE_ADDI_CONT = 0x40034494
+
+GATE_TST_STOCK = "4ab980000012"
+
+PAD_HOOK = 0x40031F44
+PAD_HOOK_STOCK = "4fefffe448d704fc"
+PAD_HOOK_LEN = 8
+PAD_CONT = 0x40031F4C
+
+PRESS_HOOK = 0x400434CA
+PRESS_HOOK_STOCK = "4ebae414241f"
+PRESS_HOOK_LEN = 6
+PRESS_UI = 0x400418E0
+PRESS_TAIL = 0x4007E8D8
+UI_OVERLAY = 0x4004D948
+
+DISP = 0x40031964
+DISP_STOCK = "2240245f4ed1"
+WRITE_HOOK = 0x4005538A
+WRITE_STOCK = "1a82223c000018b2"
+WRITE_LEN = 6
+WRITE_CONT = 0x40055390
+GREY_ENTER = 0x40034754  # bne empty @ 347B0 — nop so MIDI scans MSC locks
+GREY_ENTER_STOCK = "665a"
+GREY_ENTER_NOP = "4e71"
+LED_SKIP_B = 0x4003493E  # bne empty @ 34988
+LED_SKIP_B_STOCK = "6648"
+LED_SKIP_B_NOP = "4e71"
+LED_ADDI_A = 0x40034764  # addi #8f3e2,d0 — same shape as TRACK_ADDI
+LED_ADDI_B = 0x40034950
+GREY_CELL = 0x4004E6EA
+GREY_CELL_STOCK = "d1fc0008f3e2"
+RECALL_A = 0x40052AC6
+RECALL_B = 0x400529F6
+RECALL_STOCK = "4eb9400418e0"
+SCENE_DONE_A = 0x40052AE0
+SCENE_DONE_B = 0x40052A10
+SCENE_DONE_STOCK = "4ef94007e8d8"
+SCENE_DONE_CONT = 0x4007E8D8
+MORPH_EXIT = 0x4003F3A2
+MORPH_EXIT_STOCK = "4ef94003577c"
+XF_PUB1 = 0x40061E72
+XF_PUB2 = 0x40062C2C
+XF_JSR_STOCK = "4eb940033e3c"
+# After stock XF jsr 33e3c (do NOT wrap the jsr itself — midi14 pattern)
+XF_AFTER1 = 0x40061E78
+XF_AFTER1_STOCK = "71398000004a"
+XF_AFTER1_CONT = 0x40061E7E
+XF_AFTER2 = 0x40062C32
+XF_AFTER2_STOCK = "71b980000003"
+XF_AFTER2_CONT = 0x40062C38
+
+UI_CLEAR_SCENE = 0x40062F24
+UI_COPY_SCENE = 0x40062FBE
+UI_PASTE_SCENE = 0x40062E3C
+STOCK_CLEAR_SCENE = 0x40038C30
+STOCK_COPY_SCENE = 0x400274CC
+STOCK_PASTE_SCENE = 0x40027578
+
+# Native PART menu: hold FUNC + Part -> CLEAR. Only caller of stock clear.
+UI_CLEAR_PART = 0x4002E828
+STOCK_CLEAR_PART = 0x4004A9D0
+# Stock SAVE/CLEAR: APPLY when part==pattern. That churn (apply_wrap) causes
+# first-clear glitch/hang and post-save MSC reload. Never APPLY after save/clear
+# — patch bne->bra (lea stack cleanup still runs). Part switch keeps STOCK_APPLY.
+APPLY_BNE_SAVE = 0x4004A9B0  # inside STOCK_SAVE after lea/cmp
+APPLY_BNE_CLEAR = 0x4004AA8E  # inside STOCK_CLEAR_PART after lea/cmp
+APPLY_BNE_STOCK = "6612"  # bne.b skip_apply
+APPLY_BNE_SKIP = "6012"  # bra.b skip_apply (always)
+
+# Scene+encoder press unlock (stock bails on MIDI at these tst sites)
+ENC_PRESS_A = 0x40053A9E  # tst MIDI_FLAG inside 0x40053A68
+ENC_PRESS_B = 0x40054392  # tst MIDI_FLAG inside 0x4005435C
+ENC_PRESS_A_CONT = 0x40053AA8  # after tst+bne (non-MIDI continue)
+ENC_PRESS_B_CONT = 0x4005439C
+ENC_PRESS_A_BAIL = 0x40054350  # MIDI / fail epilogue (A)
+ENC_PRESS_B_BAIL = 0x40054C52
+ENC_PRESS_STOCK = "4ab9800000126600"  # tst.l MIDI; bne.w (hi 2 of offset vary)
+ENC_UNLOCK_CAVE = 0x400C45B0  # stock zero island (~338B)
+ENC_UNLOCK_CAVE_END = 0x400C4700
+
+# Safe ROM zero gap (NOT 0x4010CDD1 — that is DSP payload and bricks).
+# Leave headroom before the only abs xref at 0x400D2CDC.
+SAFE_CAVE = 0x400D24D0
+SAFE_CAVE_END = 0x400D2CDC  # up to abs xref @ 0x400D2CDC
+# Second zero gap after PLAYBACK string tables (stock zeros through 0x400D301F).
+CAVE2 = 0x400D2EE6
+CAVE2_END = 0x400D3020
+
+STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
+SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
+OUT = ROOT / "out" / "mainos_midisc40.bin"
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC.bin"
+VER = "1.40MIDISC"
+
+# Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
+RELEASE_HOOK = 0x40054CB6
+RELEASE_HOOK_STOCK = "42b9460d1694"
+RELEASE_HOOK_LEN = 6
+RELEASE_CONT = 0x4007CF28
+
+MIDI_SOUND = 0x100A52B0
+MIDI_VOICE = 0x46C76DC0
+MIDI_BEHIND = 0x8F162  # unlocked UI — READ only from morph
+XF_RAM = 0x460D16C8
+MORPH_CONT = 0x4003577C
+SENT_XF_MIX = 0x400D7F0C
+CTRL_BASE = 0x800064D0  # +track*4; OFF bits at +0x17e
+CC_TX = 0x4009EEC8  # stock MIDI CC send (track, flat, value, 0)
+LFO_BASE = 0x46C78960  # post-trig LFO input (track*32+flat)
+# After plock overlay onto LFO base; stock epilogue movem/lea/rts
+PLOCK_DONE = 0x4009D1DE
+PLOCK_DONE_STOCK = "4cd73cfc4fef00284e75"
+PLOCK_DONE_LEN = 10

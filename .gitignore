@@ -1,0 +1,17 @@
+# --- Elektron copyrighted material: never version or redistribute ---
+# You supply your own copy of the official OS; nothing derived from it that
+# still contains Elektron's code belongs in git.
+downloads/
+*.bin
+*.syx
+*.zip
+*.pdf
+
+# Build outputs
+out/
+
+# Local
+.DS_Store
+__pycache__/
+*.pyc
+.cursor/
