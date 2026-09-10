@@ -25,4 +25,4 @@ Get-ChildItem -Path $Extracted -Recurse -Include *.bin,*.syx | ForEach-Object { 
 
 Write-Host ""
 Write-Host "[fetch] done. Next:"
-Write-Host "  python tools/extract_main_os.py"
+Write-Host "  python tools/build_midisc40.py"

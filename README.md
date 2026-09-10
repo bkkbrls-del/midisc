@@ -1,67 +1,56 @@
 # midisc — `1.40MIDISC`
 
-Standalone sources to **reproduce Octatrack MIDI scene locks** on official
-**OS 1.40C**. Version stamp: **`1.40MIDISC`**.
+Sources to build **MIDI scene locks** on official Octatrack **OS 1.40C**.
 
-This repo is **MIDI scenes only** — not DSP effects, not the full octabam
-remixer tree.
+## What it does
 
-## What `1.40MIDISC` holds
+- MIDI track scene A/B locks + XF morph
+- Part save/reload persist
+- Bank switch keeps machine regs (sample load stays intact)
+- Solid green scene-lock LEDs
+- ARP scene-lock value clamps (LEG / MODE / SPD / RNGE)
 
-- MIDI track **scene A/B locks** + XF morph
-- Part save/reload **persist** (classic sparse pad)
-- Bank switch/invalidate **register preserve** (1.40C sample load)
-- **Solid green** scene-lock LEDs
-- **ARP** scene-lock clamps (`PAGE_MODE == 2`, flats 12–17): LEG / MODE / SPD / RNGE
+Details: `docs/TECH.md`. Shipped notes: `tools/midisc/HANDOFF.md`.
 
-Technical notes: `tools/midisc/HANDOFF.md`, `docs/MIDISC.md`, `docs/MIDI_SCENES.md`,
-`docs/PARAM_PAGES.md` (MIDI page map).
+## Build
 
-## Reproduce (your own 1.40C)
-
-1. Get official **1.40C** (Elektron support). Do **not** commit or share it.
-2. Place the extracted stock MAIN OS where the build expects it, **or** put
-   `OCTATRACK_OS1.40C.syx` at `downloads/extracted/OCTATRACK_OS1.40C.syx`
-   (see `docs/WINDOWS.md` / `scripts/fetch-os.*`).
-3. Build:
+Python 3. Need your own **1.40C** (do not commit or share it).
 
 ```bash
+# optional helper — downloads official zip into downloads/
+powershell -ExecutionPolicy Bypass -File scripts/fetch-os.ps1   # Windows
+# sh scripts/fetch-os.sh                                       # Unix
+
 python tools/build_midisc40.py
 ```
 
-4. Flash `~/Desktop/1.40MIDISC.bin` → CF root → **OS UPGRADE**.  
-   Recovery: stock `OCTATRACK_OS1.40C.syx`.
+Expects stock syx at `downloads/extracted/OCTATRACK_OS1.40C.syx` (or a prior
+extract at `out/raw/section_3_MAIN_OS.bin`). Writes `~/Desktop/1.40MIDISC.bin`.
 
-### Layout
+Flash: CF root → **OS UPGRADE**. Recovery: stock `OCTATRACK_OS1.40C.syx`
+(see `docs/FLASHING.md`).
+
+## Layout
 
 | path | role |
 |------|------|
-| `tools/midisc/` | patch sources |
-| `tools/build_midisc40.py` | entrypoint |
-| `tools/ot3_asm.py` | ColdFire assembler used by the patch |
-| `tools/extract_main_os.py` | syx → MAIN OS (if stock not pre-extracted) |
-| `tools/repack_140fx.py` | MAIN OS → flashable `.bin` / `.syx` |
-| `tools/syx_elektron.py` / `aplib_elektron.py` | Elektron container helpers |
-| `docs/*` | MIDI-scenes RE + flash notes only |
+| `tools/midisc/` | patch |
+| `tools/build_midisc40.py` | entry |
+| `tools/ot3_asm.py` | ColdFire asm helper |
+| `tools/extract_main_os.py` | syx → MAIN OS |
+| `tools/repack_140fx.py` | MAIN OS → `.bin` / `.syx` |
+| `tools/syx_elektron.py`, `aplib_elektron.py` | container helpers |
 
-## ⚠️ Before you flash anything
+## ⚠️ Before you flash
 
-Writing a non-official OS to an Octatrack can leave it unusable, and it puts
-your warranty in question. Nothing here is endorsed by, supported by, or
-affiliated with Elektron. If you flash a modified image you do so entirely at
-your own risk. Read `docs/FLASHING.md` before you need recovery.
+Non-official OS can brick the unit and voids support/warranty assumptions.
+Not affiliated with Elektron. Flash at your own risk.
 
-Back up projects before flashing. MKI and MKII share the same **1.40C** image
-(hash-verified); midisc was tested on **MKII**.
+**Do not share built `.bin` / `.syx`** — they contain Elektron’s OS. Share this
+repo; everyone builds from their own 1.40C.
 
-**No Elektron binary is redistributed here — and none may be.** A built `.bin`
-or `.syx` contains Elektron’s OS — **do not share built images**. Share this
-repo; everyone builds their own.
-
-*Octatrack* and *Elektron* are trademarks of Elektron Music Machines MAV AB,
-used here only to identify the hardware this project targets.
+*Octatrack* / *Elektron* are trademarks of Elektron Music Machines MAV AB.
 
 ## License
 
-MIT for this repository’s own code and documentation. It does not extend to
-Elektron’s firmware, which is not distributed here.
+MIT for this repo’s own code and docs. Not for Elektron firmware.
