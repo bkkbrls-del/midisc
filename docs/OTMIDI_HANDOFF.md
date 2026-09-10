@@ -1,6 +1,6 @@
 # midisc
 
-**Version:** `1.40MSC`  
+**Version:** `1.40MIDISC`  
 **Builder:** `tools/build_midisc40.py` → `tools/midisc/`  
-**Flash:** `Desktop/midisc 4.0.bin`  
-**Doc:** `docs/MIDISC.md`
+**Flash:** `Desktop/1.40MIDISC.bin`  
+**Doc:** `docs/MIDISC.md` / `tools/midisc/HANDOFF.md`
