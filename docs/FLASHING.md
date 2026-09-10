@@ -1,27 +1,31 @@
-# Flashing `1.40MIDISC`
+# Flashing a build of `1.40MIDISC`
 
-## Flash
+This project does **not** ship a `.bin`. Build first:
 
-1. Copy `1.40MIDISC.bin` to the CompactFlash card root.
-2. On the Octatrack: **OS UPGRADE** (same flow as an official OS update).
-3. Confirm version string **`1.40MIDISC`**.
+```bash
+python tools/build_midisc40.py
+```
 
-Back up projects first.
+Output: `~/Desktop/1.40MIDISC.bin` (and `out/OCTATRACK_1.40MIDISC.syx`).
+
+## Install
+
+1. Back up projects.
+2. Copy **that build’s** `1.40MIDISC.bin` to the CompactFlash **root**.
+3. On the unit: **OS UPGRADE** (same as an official update).
+4. Confirm version **`1.40MIDISC`**.
 
 ## Recovery
 
-If the unit will not boot cleanly:
+Keep stock **1.40C** offline.
 
-1. Official stock **`OCTATRACK_OS1.40C.syx`** via MIDI sysex upgrade  
-   (FUNC+power → MIDI upgrade path on Elektron units), **or**
-2. Put stock `OCTATRACK_OS1.40C.bin` on the CF root and run OS UPGRADE again.
-
-Always keep a known-good stock 1.40C image offline. Never rely on a single
-modified card image.
+- MIDI: official `OCTATRACK_OS1.40C.syx` (FUNC+power → MIDI OS upgrade), or  
+- CF: stock `OCTATRACK_OS1.40C.bin` on the card root → OS UPGRADE.
 
 ## Safety
 
 Modified firmware can leave the unit unusable and puts warranty/support in
 question. Not endorsed by Elektron. Flash at your own risk.
 
-Do **not** redistribute built `.bin` / `.syx` files (they contain Elektron’s OS).
+**Do not share built `.bin` / `.syx`** — they contain Elektron’s OS. Share the
+repo; everyone rebuilds from their own 1.40C.

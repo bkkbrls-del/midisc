@@ -1,13 +1,18 @@
 # midisc 1.40MIDISC
 
-**Build:** `python tools/build_midisc40.py` → `~/Desktop/1.40MIDISC.bin`  
-**Base:** OS 1.40C · **Version string:** `1.40MIDISC`
+**Rebuild:** `python tools/build_midisc40.py` (needs your own 1.40C)  
+**Output:** `~/Desktop/1.40MIDISC.bin` · version string `1.40MIDISC`
 
-## Shipped
+## Working pieces
 
-- MSC sparse persist at bank `+0x90522` (u16 `MS`)
-- Bank hooks preserve regs (sample load)
-- Solid green lock LEDs
-- ARP clamps: `PAGE_MODE == 2`, flat−12; LEG 0–1, MODE 0–6, SPD 0–95, RNGE 0–7
+| Area | Where |
+|------|--------|
+| ARP clamp `PAGE_MODE==2`, flat−12 | `hold.py` → `SENT_CLAMP` |
+| MSC live bank + hold/dial | `hold.py`, `MSC @ 0x400D6600` |
+| Persist sparse `+0x90522` / `MS` + durable save | `parts.py` |
+| Bank reg preserve | `parts.py` bank_* → `CODE2` |
+| Solid green LEDs | nop `GREY_ENTER` / `LED_SKIP_B`; addi → rts stubs |
+| XF morph / plock | `morph.py` |
+| Hook list + caves | `docs/TECH.md`, `memory_map.py`, `build.py` |
 
-See `docs/TECH.md`. Do not share built images.
+Do not redistribute built images.
