@@ -9,7 +9,7 @@ from .memory_map import *  # noqa: F403
 from .util import ensure_stock, fix_jsr, jmp_abs, jsr_abs, off
 from .parts import (
     build_after_apply, build_apply_wrap, build_bank_invalidate,
-    build_bank_switch, build_clear_part, build_dirty, build_pack,
+    build_after_project_load, build_bank_publish, build_bank_switch, build_clear_part, build_dirty, build_pack,
     build_reload_after, build_reload_ui, build_save_ui, build_unpack,
 )
 from .hold import (
@@ -23,7 +23,7 @@ from .scene_ui import (
 )
 from .morph import (
     build_morph, build_rebuild_lock_mask, build_scene_after_plock,
-    build_scene_applied, build_write_remixed, build_xf_after, build_xf_mix_out,
+    build_scene_applied, build_voice_reload_d2, build_write_remixed, build_xf_after, build_xf_mix_out,
 )
 
 def main() -> None:
@@ -70,6 +70,7 @@ def main() -> None:
         (BANK_WR_SWITCH_B, BANK_WR_STOCK),
         (BANK_WR_INIT_A, BANK_WR_STOCK),
         (BANK_WR_INIT_B, BANK_WR_STOCK),
+        (AFTER_PROJECT_LOAD, AFTER_PROJECT_LOAD_STOCK),
     ):
         got = bytes(img[off(site) : off(site) + len(want) // 2]).hex()
         if got != want:
@@ -94,12 +95,24 @@ def main() -> None:
     reload_after_b = build_reload_after()
     xf_mix_b = build_xf_mix_out()
 
-    # SAFE_CAVE: dirty + clear_part + pack + unpack + save + reload_after + xf_mix
+    # PROJECT_CAVE: clear_part + after_project_load (NOT xf2 — that hangs boot).
+    if any(img[off(PROJECT_CAVE) : off(PROJECT_CAVE_END)]):
+        sys.exit("PROJECT_CAVE not empty")
+    after_proj_b = bytearray(build_after_project_load(AFTER_PROJECT_LOAD_CONT))
+    need_proj = len(clear_pt_b) + len(after_proj_b)
+    if need_proj > PROJECT_CAVE_END - PROJECT_CAVE:
+        sys.exit(f"PROJECT_CAVE overrun {need_proj}")
+    abs_clr_pt = PROJECT_CAVE
+    abs_after_proj = PROJECT_CAVE + len(clear_pt_b)
+    print(
+        f"PROJECT_CAVE clear {len(clear_pt_b)} @ {abs_clr_pt:#x} "
+        f"after_proj {len(after_proj_b)} @ {abs_after_proj:#x}"
+    )
+
+    # SAFE_CAVE: dirty + clamp + pack + unpack + save + reload_after + xf_mix + xf2 + plock
     sc = bytearray()
     abs_dirty = SAFE_CAVE + len(sc)
     sc += dirty_b
-    abs_clr_pt = SAFE_CAVE + len(sc)
-    sc += clear_pt_b
     abs_clamp = SAFE_CAVE + len(sc)
     sc += build_scene_lock_clamp()
     abs_pack = SAFE_CAVE + len(sc)
@@ -117,9 +130,11 @@ def main() -> None:
     abs_plock = SAFE_CAVE + len(sc)
     sc += build_scene_after_plock()
     if SAFE_CAVE + len(sc) > SAFE_CAVE_END:
-        sys.exit(f"SAFE_CAVE overrun {len(sc)}")
-    print(f"SAFE_CAVE {len(sc)} @ {SAFE_CAVE:#x}")
-    print(f"  dirty={abs_dirty:#x} clr_pt={abs_clr_pt:#x} clamp={abs_clamp:#x} pack={abs_pack:#x} unpack={abs_unpack:#x}")
+        sys.exit(f"SAFE_CAVE overrun {len(sc)} (need xf2 in SAFE; do not move to PROJECT)")
+    if not (SAFE_CAVE <= abs_xf2 < SAFE_CAVE_END):
+        sys.exit(f"xf2 must live in SAFE_CAVE, got {abs_xf2:#x}")
+    print(f"SAFE_CAVE {len(sc)} @ {SAFE_CAVE:#x} free {SAFE_CAVE_END - SAFE_CAVE - len(sc)}")
+    print(f"  dirty={abs_dirty:#x} clamp={abs_clamp:#x} pack={abs_pack:#x} unpack={abs_unpack:#x}")
     print(f"  save={abs_save:#x} rel_after={abs_reload_after:#x} xf_mix={abs_xf_mix:#x}")
     print(f"  xf2={abs_xf2:#x} plock={abs_plock:#x}")
 
@@ -131,6 +146,16 @@ def main() -> None:
     if any(img[off(CAVE2) : off(CAVE2_END)]):
         sys.exit("CAVE2 not empty")
     print(f"CAVE2 {len(c2b)} @ {CAVE2:#x} rebuild={abs_rebuild:#x}")
+    if fix_jsr(after_proj_b, SENT_UNPACK, abs_unpack) != 1:
+        sys.exit("after_project_load unpack sentinel")
+
+    voice_rel_b = bytearray(build_voice_reload_d2())
+    if any(img[off(VOICE_RELOAD_CAVE) : off(VOICE_RELOAD_CAVE_END)]):
+        sys.exit("VOICE_RELOAD_CAVE not empty")
+    if len(voice_rel_b) > VOICE_RELOAD_CAVE_END - VOICE_RELOAD_CAVE:
+        sys.exit(f"VOICE_RELOAD_CAVE overrun {len(voice_rel_b)}")
+    abs_voice_rel = VOICE_RELOAD_CAVE
+    print(f"VOICE_RELOAD {len(voice_rel_b)} @ {abs_voice_rel:#x}")
 
     # CODE2: apply/reload-ui/bank + scene-done/write remix
     after_b = build_after_apply()
@@ -185,6 +210,10 @@ def main() -> None:
     abs_morph = STUB + len(blob)
     blob += build_morph()
     addrs["morph"] = abs_morph
+    # Bam Site B: publish+unpack only (no pack) — fits STUB free
+    abs_bank_pub = STUB + len(blob)
+    bank_pub_b = bytearray(build_bank_publish())
+    blob += bank_pub_b
     addrs["plock"] = abs_plock
     addrs["pack"] = abs_pack
     addrs["unpack"] = abs_unpack
@@ -194,6 +223,9 @@ def main() -> None:
         sys.exit(f"stub overrun {STUB + len(blob):#x} > {STUB_END:#x} ({len(blob)} bytes)")
 
     print(f"stub {len(blob)} free {STUB_END - STUB - len(blob)}")
+    print(f"  bank_pub={abs_bank_pub:#x} ({len(bank_pub_b)}B Bam Site B)")
+    if SENT_PACK.to_bytes(4, "big") in bank_pub_b:
+        sys.exit("bank_pub must not call pack")
 
     n_pack = fix_jsr(blob, SENT_PACK, addrs["pack"])
     n_clamp = fix_jsr(blob, SENT_CLAMP, abs_clamp)
@@ -201,8 +233,8 @@ def main() -> None:
         sys.exit(f"stub clamp sentinels {n_clamp}")
     n_unp = fix_jsr(blob, SENT_UNPACK, addrs["unpack"])
     n_dirt = fix_jsr(blob, SENT_DIRTY, abs_dirty)
-    if n_unp < 1:
-        sys.exit("stub missing unpack (morph)")
+    if n_unp < 2:
+        sys.exit(f"stub unpack sentinels {n_unp} (need morph+bank_pub)")
     n_rel_mix = fix_jsr(blob, SENT_XF_MIX, abs_xf_mix)
     n_rb_stub = fix_jsr(blob, SENT_REBUILD_MASK, addrs["rebuild"])
     # rebuild only from plock (SAFE); stubs must not call it (H-safe scene/hold)
@@ -212,13 +244,15 @@ def main() -> None:
         sys.exit(f"sentinel miss pack={n_pack} unpack={n_unp}")
     if n_dirt == 0:
         sys.exit("no dirty sentinel in stub")
-    if n_rel_mix < 4:
-        sys.exit(f"stub xf_mix sentinel count {n_rel_mix} (holdx2+paste+clear; release no mix)")
+    if n_rel_mix < 3:
+        sys.exit(f"stub xf_mix sentinel count {n_rel_mix} (holdx2+clear; paste no mix)")
 
     n2 = fix_jsr(c2, SENT_PACK, addrs["pack"])
     n2 += fix_jsr(c2, SENT_UNPACK, addrs["unpack"])
     n2 += fix_jsr(c2, SENT_XF_MIX, abs_xf_mix)
     n2 += fix_jsr(c2, SENT_REBUILD_MASK, addrs["rebuild"])  # expect 0
+    if fix_jsr(c2, SENT_VOICE_RELOAD, abs_voice_rel) != 1:
+        sys.exit("CODE2 missing voice_reload")
     if n2 < 2:
         sys.exit(f"CODE2 sentinel miss ({n2})")
 
@@ -230,14 +264,16 @@ def main() -> None:
     n_sc_rb = fix_jsr(sc, SENT_REBUILD_MASK, addrs["rebuild"])
     if n_sc_unp < 1:
         sys.exit(f"SAFE_CAVE unpack sentinels {n_sc_unp}")
-    if n_sc_mix < 1:
-        sys.exit(f"SAFE_CAVE xf_mix sentinels {n_sc_mix}")
+    # xf2 lives in SAFE_CAVE (M5 boot layout)
     if n_sc_rb != 0:
         sys.exit(f"SAFE_CAVE rebuild sentinels {n_sc_rb} (need 0; plock must not rebuild)")
 
     # morph is in SAFE_CAVE; unpack sentinel fixed via n_sc_unp
 
     img[off(SAFE_CAVE) : off(SAFE_CAVE) + len(sc)] = bytes(sc)
+    img[off(PROJECT_CAVE) : off(PROJECT_CAVE) + len(clear_pt_b)] = bytes(clear_pt_b)
+    img[off(abs_after_proj) : off(abs_after_proj) + len(after_proj_b)] = bytes(after_proj_b)
+    img[off(VOICE_RELOAD_CAVE) : off(VOICE_RELOAD_CAVE) + len(voice_rel_b)] = bytes(voice_rel_b)
     unlock_b = build_enc_unlock()
     abs_unlock = ENC_UNLOCK_CAVE
     hook_a_b = build_enc_press_hook(ENC_PRESS_A_CONT, ENC_PRESS_A_BAIL, abs_unlock)
@@ -306,7 +342,7 @@ def main() -> None:
     img[off(XF_AFTER2) : off(XF_AFTER2) + 6] = jmp_abs(abs_xf2)
     img[off(SCENE_DONE_A) : off(SCENE_DONE_A) + 6] = jmp_abs(abs_scene_done)
     img[off(SCENE_DONE_B) : off(SCENE_DONE_B) + 6] = jmp_abs(abs_scene_done)
-    img[off(WRITE_HOOK) : off(WRITE_HOOK) + WRITE_LEN] = jmp_abs(abs_write_mix)
+    img[off(WRITE_HOOK) : off(WRITE_HOOK) + WRITE_LEN] = jmp_abs(abs_write_mix) + b"\x4e\x71"
     img[off(PLOCK_DONE) : off(PLOCK_DONE) + PLOCK_DONE_LEN] = jmp_abs(addrs["plock"]) + b"\x4e\x71\x4e\x71"
 
     img[off(STOCK_APPLY) : off(STOCK_APPLY) + 8] = jmp_abs(abs_apply) + b"\x4e\x71"
@@ -315,9 +351,10 @@ def main() -> None:
     img[off(RELOAD_UI_B) : off(RELOAD_UI_B) + 6] = jsr_abs(abs_reload)
 
     img[off(BANK_WR_SWITCH_A) : off(BANK_WR_SWITCH_A) + 6] = jsr_abs(abs_bank_sw)
-    img[off(BANK_WR_SWITCH_B) : off(BANK_WR_SWITCH_B) + 6] = jsr_abs(abs_bank_sw)
+    img[off(BANK_WR_SWITCH_B) : off(BANK_WR_SWITCH_B) + 6] = jsr_abs(abs_bank_pub)
     img[off(BANK_WR_INIT_A) : off(BANK_WR_INIT_A) + 6] = jsr_abs(abs_bank_inv)
     img[off(BANK_WR_INIT_B) : off(BANK_WR_INIT_B) + 6] = jsr_abs(abs_bank_inv)
+    img[off(AFTER_PROJECT_LOAD) : off(AFTER_PROJECT_LOAD) + 6] = jsr_abs(abs_after_proj)
 
     save_all_lea = bytes.fromhex("45f94004a908")
     if bytes(img[off(SAVE_ALL) + 4 : off(SAVE_ALL) + 10]) != save_all_lea:
@@ -329,6 +366,8 @@ def main() -> None:
         (off(CODE2), off(CODE2) + len(c2)),
         (off(STUB), off(STUB) + len(blob)),
         (off(SAFE_CAVE), off(SAFE_CAVE) + len(sc)),
+        (off(PROJECT_CAVE), off(PROJECT_CAVE) + len(clear_pt_b) + len(after_proj_b)),
+        (off(VOICE_RELOAD_CAVE), off(VOICE_RELOAD_CAVE) + len(voice_rel_b)),
         (off(CAVE2), off(CAVE2) + len(c2b)),
         (off(0x400D7C3C), off(0x400D7C50)),
         (off(LAST_PART), off(APPLY_RET) + 4),
@@ -370,6 +409,7 @@ def main() -> None:
         (off(BANK_WR_SWITCH_B), off(BANK_WR_SWITCH_B) + 6),
         (off(BANK_WR_INIT_A), off(BANK_WR_INIT_A) + 6),
         (off(BANK_WR_INIT_B), off(BANK_WR_INIT_B) + 6),
+        (off(AFTER_PROJECT_LOAD), off(AFTER_PROJECT_LOAD) + 6),
         (off(SAVE_ALL) + 4, off(SAVE_ALL) + 10),
     ]
     stray = [
@@ -398,6 +438,10 @@ def main() -> None:
         sys.exit("TRACK_ADDI must jsr taddi")
     if bytes(img[off(WRITE_HOOK) : off(WRITE_HOOK) + 6]) != jmp_abs(abs_write_mix):
         sys.exit("WRITE_HOOK must jmp write_remixed")
+    if WRITE_LEN != 8 or WRITE_CONT != 0x40055392:
+        sys.exit("WRITE_HOOK must cover full move.l #0x18b2 (cont 55392)")
+    if SENT_VOICE_RELOAD.to_bytes(4, "big") in c2:
+        sys.exit("voice_reload sentinel unresolved")
     if bytes(img[off(SCENE_DONE_A) : off(SCENE_DONE_A) + 6]) != jmp_abs(abs_scene_done):
         sys.exit("SCENE_DONE_A must jmp scene_applied")
     if bytes(img[off(SCENE_DONE_B) : off(SCENE_DONE_B) + 6]) != jmp_abs(abs_scene_done):
@@ -413,6 +457,14 @@ def main() -> None:
         sys.exit("XF_AFTER1 must jmp xf1")
     if bytes(img[off(XF_AFTER2) : off(XF_AFTER2) + 6]) != jmp_abs(abs_xf2):
         sys.exit("XF_AFTER2 must jmp xf2")
+    if bytes(img[off(AFTER_PROJECT_LOAD) : off(AFTER_PROJECT_LOAD) + 6]) != jsr_abs(abs_after_proj):
+        sys.exit("AFTER_PROJECT_LOAD must jsr after_proj")
+    if bytes(img[off(BANK_WR_SWITCH_A) : off(BANK_WR_SWITCH_A) + 6]) != jsr_abs(abs_bank_sw):
+        sys.exit("BANK_WR_SWITCH_A must jsr bank_switch")
+    if bytes(img[off(BANK_WR_SWITCH_B) : off(BANK_WR_SWITCH_B) + 6]) != jsr_abs(abs_bank_pub):
+        sys.exit("BANK_WR_SWITCH_B must jsr bank_publish (Bam: no pack)")
+    if bytes(img[off(0x400622b2) : off(0x400622b8)]) != bytes.fromhex("4eb94000faf0"):
+        sys.exit("stock jsr faf0 must stay intact")
     if bytes(img[off(XF_PUB1) : off(XF_PUB1) + 6]).hex() != XF_JSR_STOCK:
         sys.exit("XF_PUB1 must stay stock")
     if bytes(img[off(XF_PUB2) : off(XF_PUB2) + 6]).hex() != XF_JSR_STOCK:
@@ -430,6 +482,8 @@ def main() -> None:
         (STUB, len(blob)),
         (CODE2, len(c2)),
         (SAFE_CAVE, len(sc)),
+        (PROJECT_CAVE, len(clear_pt_b) + len(after_proj_b)),
+        (VOICE_RELOAD_CAVE, len(voice_rel_b)),
         (CAVE2, len(c2b)),
     ):
         a = region
@@ -484,9 +538,9 @@ def main() -> None:
             "--bin",
             str(DESKTOP),
             "-V",
-            VER,
+            VER,  # splash <=10 (1.40MDISC2)
             "-o",
-            str(ROOT / "out" / f"OCTATRACK_{VER}.syx"),
+            str(ROOT / "out" / f"OCTATRACK_{DESKTOP.stem}.syx"),
         ],
         cwd=str(ROOT),
     )

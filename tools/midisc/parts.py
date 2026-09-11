@@ -5,8 +5,10 @@ from ot3_asm import Asm
 
 from .memory_map import *  # noqa: F403
 def build_pack() -> bytes:
-    """MSC -> working sparse, then STOCK_SAVE durable commit (shadow+staging+9b312).
+    """MSC -> working sparse, then durable like stock Part Save + Reload.
 
+    working->shadow->PART_STAGING, then shadow->PART_PROJECT (Reload half)
+    so edits after Part Paste refresh Project Save CF source. No faf0/fbb4.
     Unsaved edits never survived reboot; Part Save did. SAVE's durable work is
     memcpy working→shadow→100ab196 and set 9b312 — not just sparse bytes.
     Keep asterisk (dirty() still marks project). LAST==0xFF → rts.
@@ -27,6 +29,7 @@ def build_pack() -> bytes:
     a.adda_d(1, 0)
     a.adda_imm(SPARSE_OFF, 0)
     a.hex("2248")  # a1 = working sparse
+    a.hex("2f09")  # push sparse base (count must land at header+2)
     a.move_l_imm(SPARSE_MAGIC, 0)
     a.hex("3280")
     a.hex("42290002")
@@ -49,7 +52,8 @@ def build_pack() -> bytes:
     a.hex("5382")
     a.bne("pk_loop")
     a.label("pk_done")
-    a.hex("13430002")
+    a.hex("225f")  # pop sparse base → a1
+    a.hex("13430002")  # count @ header+2
 
     # Full STOCK_SAVE durable half (working→shadow→staging + 9b312).
     # Sparse-only dual-write was not enough on HW; Part Save does this.
@@ -70,7 +74,15 @@ def build_pack() -> bytes:
     a.hex("2f02")  # src shadow
     a.move_l_imm(PART_STAGING, 0)
     a.add_dd(5, 0)
-    a.hex("2f00")
+    a.hex("2f00")  # dst staging
+    a.hex("4e93")
+    a.hex("4fef000c")
+    # Stock Reload second half: shadow -> PART_PROJECT (Project Save CF source)
+    a.hex("487818b2")
+    a.hex("2f02")  # src shadow
+    a.move_l_imm(PART_PROJECT, 0)
+    a.add_dd(5, 0)
+    a.hex("2f00")  # dst PART_PROJECT
     a.hex("4e93")
     a.hex("4fef000c")
     a.movea_abs(BANK_PTR, 0)
@@ -89,8 +101,8 @@ def build_pack() -> bytes:
 def build_unpack() -> bytes:
     """sparse -> MSC. Try working; if no MS magic, try SAVE-shadow.
 
-    If loaded from shadow, memcpy 144B shadow->working so the next SAVE
-    (working→shadow) cannot wipe durable locks. Never touches MIDI_LIVE.
+    M5 shape (SAFE-fit): hit and miss both set LAST=part (no bit7 empty-settled).
+    Shadow hit syncs 144B shadow->working. No count==0 scan.
     """
     a = Asm()
     a.push("d0", "d1", "d2", "d3", "d4", "a0", "a1")
@@ -103,7 +115,7 @@ def build_unpack() -> bytes:
     a.bne("uf")
     a.move_l_imm(SPARSE_OFF, 2)
     a.mvz_b_abs(UNPACK_SRC, 3)
-    a.moveq(0, 4)  # d4=1 → also sync shadow->working
+    a.moveq(0, 4)
     a.cmpi(0xFE, 3)
     a.bne("not_sh")
     a.move_l_imm(SHADOW_SPARSE_OFF, 2)
@@ -130,7 +142,7 @@ def build_unpack() -> bytes:
     a.cmpi(SPARSE_MAGIC, 0)
     a.beq("load")
     a.cmpi(SPARSE_OFF, 2)
-    a.bne("udone")
+    a.bne("hit")  # M5: miss shares hit epilogue
     a.move_l_imm(SHADOW_SPARSE_OFF, 2)
     a.moveq(1, 4)
     a.bra("try")
@@ -149,23 +161,22 @@ def build_unpack() -> bytes:
     a.bne("uloop")
     a.label("maybe_sync")
     a.tst_d(4)
-    a.beq("udone")
-    # shadow → working (144B) so SAVE won't wipe
+    a.beq("hit")
     a.move_l_dd(3, 0)
     a.move_l_imm(0x18B2, 1)
     a.muls(0, 1)
     a.movea_abs(BANK_PTR, 0)
     a.adda_d(1, 0)
-    a.hex("2248")  # a1 = part base
-    a.adda_imm(SHADOW_SPARSE_OFF, 0)  # a0 = shadow sparse
-    a.adda_imm(SPARSE_OFF, 1)  # a1 = working sparse
+    a.hex("2248")
+    a.adda_imm(SHADOW_SPARSE_OFF, 0)
+    a.adda_imm(SPARSE_OFF, 1)
     a.move_l_imm(SPARSE_BYTES, 2)
     a.label("cp_sp")
-    a.hex("1018")  # move.b (a0)+, d0
-    a.hex("12c0")  # move.b d0, (a1)+
-    a.hex("5382")  # subq.l #1, d2
+    a.hex("1018")
+    a.hex("12c0")
+    a.hex("5382")
     a.bne("cp_sp")
-    a.label("udone")
+    a.label("hit")
     a.move_l_dd(3, 0)
     a.move_b_d_abs(0, LAST_PART)
     a.pop("a1", "a0", "d4", "d3", "d2", "d1", "d0")
@@ -173,12 +184,20 @@ def build_unpack() -> bytes:
     return a.link()
 
 
+
 def build_reload_after() -> bytes:
-    """After stock RELOAD: restore Part-Save CKPT if MS magic present, else shadow."""
+    """After stock RELOAD: restore Part-Save CKPT if MS magic present, else shadow.
+
+    Edits pack into shadow, so stock shadow->working alone cannot undo midisc.
+    Part Save snapshots working sparse -> CKPT; on hit, CKPT -> working, unpack,
+    then pack so shadow/staging/PART_PROJECT match the saved MSC again.
+    Part index from stack (reload arg), not PART_DISP.
+    """
     a = Asm()
-    a.hex("2f00")  # push d0 — stock success/fail
+    a.hex("2f00")  # push d0 — stock success/fail; part at 4(sp)
     a.push("d1", "d2", "d3", "a0", "a1")
-    a.mvz_b_abs(PART_DISP, 3)
+    # 1*4 + 5*4 = 24; part was @4 -> @0x18
+    a.move_l_sp(0x18, 3)
     a.andi(0xF, 3)
     a.move_l_dd(3, 0)
     a.move_l_imm(SPARSE_BYTES, 1)
@@ -212,6 +231,8 @@ def build_reload_after() -> bytes:
     a.label("do_unp")
     a.pop("a1", "a0", "d3", "d2", "d1")
     a.jsr(SENT_UNPACK)
+    # Republish durable from restored MSC (shadow was dirty from edit-time pack)
+    a.jsr(SENT_PACK)
     a.jsr(PRESS_UI)
     a.hex("201f")  # pop d0
     a.movea_abs(APPLY_RET, 0)
@@ -220,9 +241,11 @@ def build_reload_after() -> bytes:
 
 
 def build_bank_switch() -> bytes:
-    """d0=new BANK_PTR. Pack, publish, unpack. Preserve d1-d7/a0-a6 (sample load).
+    """d0=new BANK_PTR. Pack, publish, unpack. Site A only (0x400622aa).
 
-    ColdFire has no movem predecrement — lea frame + movem (sp) like stock.
+    Guarded path: BANK_ID still old; pack while old bank is current, then
+    publish. Part1 after-faf0 unpack is build_after_project_load. Preserve
+    d1-d7/a0-a6 (sample load).
     """
     a = Asm()
     a.hex("4fefffc4")  # lea -0x3c(sp),sp  ; 15 regs
@@ -236,6 +259,66 @@ def build_bank_switch() -> bytes:
     a.hex("4fef003c")  # lea 0x3c(sp),sp
     a.rts()
     return a.link()
+
+
+def build_bank_publish() -> bytes:
+    """d0=new BANK_PTR. Publish then unpack. Never pack (Bam Site B).
+
+    Site B (0x40087d44): BANK_ID already published. Pack here = Bam emu bug
+    (durable SAVE mid bank-load → wrong pattern). Publish + unpack only.
+    Octakit: kits keep part layout/offsets; midisc DRAM stays at CLIP/CKPT
+    (0x460C9A00+) — never 0x47fc7410..0x47fd910f boot temp.
+    """
+    a = Asm()
+    a.hex("4fefffc4")  # lea -0x3c(sp),sp
+    a.hex("48d77ffe")  # movem.l d1-d7/a0-a6,(sp)
+    a.move_l_d_abs(0, BANK_PTR)
+    a.jsr(SENT_UNPACK)
+    a.hex("4cd77ffe")
+    a.hex("4fef003c")
+    a.rts()
+    return a.link()
+
+
+def build_after_project_load(cont: int = 0x400418E0) -> bytes:
+    """After faf0: seed CKPT from PART_PROJECT sparse, unpack, jmp cont.
+
+    Project CF lands in PART_PROJECT/staging; DRAM CKPT does not. Seeding CKPT
+    makes Part Reload restore project-saved midisc without a re-Part-Save.
+    Do NOT merely wipe CKPT — edits pack into shadow, so Reload would look like
+    autosave (MS1 regression). Preserves d2. Lives in PROJECT_CAVE after clear.
+    """
+    a = Asm()
+    a.push("d0", "d1", "d2", "d3", "a0", "a1")
+    a.hex("2f0a")  # push a2
+    a.movea_imm(MEMCPY, 2)
+    a.moveq(0, 3)
+    a.label("lp")
+    a.move_l_dd(3, 0)
+    a.move_l_imm(0x18B2, 1)
+    a.muls(0, 1)
+    a.movea_imm(PART_PROJECT, 1)
+    a.adda_d(1, 1)
+    a.adda_imm(0x17A2, 1)  # src = PP sparse
+    a.move_l_dd(3, 0)
+    a.move_l_imm(SPARSE_BYTES, 1)
+    a.muls(0, 1)
+    a.movea_imm(CKPT, 0)
+    a.adda_d(1, 0)  # dst = CKPT[part]
+    a.hex("48780090")  # pea 144
+    a.hex("2f09")  # src
+    a.hex("2f08")  # dst
+    a.hex("4e92")  # jsr (a2) MEMCPY
+    a.hex("4fef000c")
+    a.addq(1, 3)
+    a.cmpi(4, 3)
+    a.bcs("lp")
+    a.hex("245f")  # pop a2
+    a.pop("a1", "a0", "d3", "d2", "d1", "d0")
+    a.jsr(SENT_UNPACK)
+    a.jmp(cont)
+    return a.link()
+
 
 
 def build_bank_invalidate() -> bytes:
@@ -313,13 +396,13 @@ def build_after_apply() -> bytes:
 
 
 def build_save_ui() -> bytes:
-    """Pack live MSC / salvage durable sparse, then jmp stock SAVE.
+    """Pack live MSC / salvage durable sparse, snapshot CKPT, jmp stock SAVE.
 
     SAVE_ALL calls this for parts 0..3. Non-current parts must not let empty
     working wipe a good shadow — salvage shadow->working when working lacks MS.
-    Pack only when arg==PART_DISP (MSC is that part). Never unpack-before-pack.
-    Never gate on pattern. Set LAST=arg before pack. No CKPT here: pack durable
-    + STOCK_SAVE already commit shadow (reload_after falls back to shadow).
+    Pack only when arg==PART_DISP (MSC is that part). Always copy working sparse
+    -> CKPT[part] so Part Reload can restore midisc after later edits (edits pack
+    into shadow; CKPT is the Part-Save freeze).
     """
     a = Asm()
     a.push("d0", "d1", "d2", "a0", "a1")
@@ -356,10 +439,31 @@ def build_save_ui() -> bytes:
     a.move_l_dd(2, 0)
     a.mvz_b_abs(PART_DISP, 1)
     a.hex("b081")
-    a.bne("go")
+    a.bne("ckpt")
     a.move_b_d_abs(0, LAST_PART)
     a.jsr(SENT_PACK)
-    a.label("go")
+
+    # working sparse -> CKPT[part] (Part Reload freeze)
+    a.label("ckpt")
+    a.move_l_dd(2, 0)
+    a.move_l_imm(0x18B2, 1)
+    a.muls(0, 1)
+    a.movea_abs(BANK_PTR, 0)
+    a.adda_d(1, 0)
+    a.adda_imm(SPARSE_OFF, 0)
+    a.hex("2248")  # a1 = working sparse
+    a.move_l_dd(2, 0)
+    a.move_l_imm(SPARSE_BYTES, 1)
+    a.muls(0, 1)
+    a.movea_imm(CKPT, 0)
+    a.adda_d(1, 0)  # a0 = CKPT[part]
+    a.move_l_imm(SPARSE_BYTES, 1)
+    a.label("cp_ck")
+    a.hex("1019")  # move.b (a1)+, d0
+    a.hex("10c0")  # move.b d0, (a0)+
+    a.hex("5381")
+    a.bne("cp_ck")
+
     a.pop("a1", "a0", "d2", "d1", "d0")
     a.jmp(STOCK_SAVE)
     return a.link()
@@ -379,17 +483,39 @@ def build_reload_ui(after_abs: int) -> bytes:
 
 
 def build_clear_part() -> bytes:
-    """Native Part Clear — midisc 3.0 parts path + Part1 gate fix.
+    """Part Clear: wipe working + PART_PROJECT + CKPT sparse, jmp stock Clear.
 
-    MSC wipe when clear-arg matches LAST_PART or PART_DISP (loaded part only).
-    Never compare *0x80000003 (active PATTERN index; Pattern1==0 false-wiped).
-    Stock clears working+shadow sparse. jmp keeps stock $14(a7) part arg.
+    Stock Clear→SAVE copies working→shadow→staging, so those two follow working.
+    PART_PROJECT is Project Save CF source and is not updated by stock SAVE — zero
+    it here. Shared z144 helper (bsr). Never CLEAR_CAVE.
     """
     a = Asm()
-    a.push("d0", "d1", "a0")
-    a.move_l_sp(0x10, 0)
+    a.push("d0", "d1", "d2", "a0", "a1")
+    a.move_l_sp(0x18, 0)
     a.andi(0xF, 0)
+    a.move_l_dd(0, 2)
+    a.move_l_imm(0x18B2, 1)
+    a.muls(0, 1)
+    a.movea_abs(BANK_PTR, 0)
+    a.adda_d(1, 0)
+    a.adda_imm(SPARSE_OFF, 0)
+    a._fix.append((len(a.b), "z144"))
+    a.hex("61000000")
+    a.movea_imm(PART_PROJECT, 0)
+    a.adda_d(1, 0)
+    a.adda_imm(0x17A2, 0)
+    a._fix.append((len(a.b), "z144"))
+    a.hex("61000000")
+    a.move_l_dd(2, 0)
+    a.move_l_imm(SPARSE_BYTES, 1)
+    a.muls(0, 1)
+    a.movea_imm(CKPT, 0)
+    a.adda_d(1, 0)
+    a._fix.append((len(a.b), "z144"))
+    a.hex("61000000")
+    a.move_l_dd(2, 0)
     a.mvz_b_abs(LAST_PART, 1)
+    a.andi(0xF, 1)
     a.hex("b081")
     a.beq("wipe")
     a.mvz_b_abs(PART_DISP, 1)
@@ -406,8 +532,14 @@ def build_clear_part() -> bytes:
     a.moveq(0xFF, 0)
     a.move_b_d_abs(0, LAST_PART)
     a.label("skip")
-    a.pop("a0", "d1", "d0")
+    a.pop("a1", "a0", "d2", "d1", "d0")
     a.jmp(STOCK_CLEAR_PART)
+    a.label("z144")
+    a.moveq(36, 0)
+    a.label("z1")
+    a.hex("4298")
+    a.hex("5380")
+    a.bne("z1")
+    a.rts()
     return a.link()
-
 

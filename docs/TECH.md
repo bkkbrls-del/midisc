@@ -1,7 +1,9 @@
-# midisc technical map (`1.40MIDISC`)
+﻿# midisc technical map (`1.40MIDISC5`)
 
 Facts the shipped patch relies on. Base image: stock **1.40C** MAIN OS
 (`BASE = 0x40000400`). All addresses in `tools/midisc/memory_map.py`.
+
+Splash field is ≤10 chars: **`1.40MDISC5`**. Flash filename: **`1.40MIDISC5.bin`**.
 
 ---
 
@@ -68,9 +70,16 @@ Sparse blob inside the **part window** (not a separate file):
 `build_pack`: MSC → working sparse, then the same durable half stock Part Save
 does — memcpy working→shadow→`PART_STAGING` (`0x100AB196`) and set
 `PART_SAVED` (`bank+0x9B312`). Sparse-only write was not enough; the full
-shadow/staging/`9b312` path is what survives reboot.
+shadow/staging/`9b312` path is what survives reboot. Pack also refreshes
+`PART_PROJECT` (`0x100A4ECE`) so Project Save / Part Paste see current locks.
 
 `build_unpack`: sparse → MSC on apply/reload.
+
+Part Reload uses DRAM **CKPT** (`CLIP+0x200`, `CLIP = 0x460C9A00`) — Part Save
+freezes sparse there. After project load (`faf0`), `AFTER_PROJECT_LOAD`
+(`0x400622C6`) seeds CKPT from `PART_PROJECT` sparse then unpacks (stock `faf0`
+fills CF→bank/`PART_PROJECT`/staging but not DRAM CKPT). Never body-hook
+`PROJECT_LOAD` (`0x4000faf0`) or `PROJECT_SAVE` (`0x4000fbb4`).
 
 ---
 
@@ -78,18 +87,23 @@ shadow/staging/`9b312` path is what survives reboot.
 
 | Region | Range | Contents |
 |--------|-------|----------|
-| `SAFE_CAVE` | `0x400D24D0`…`0x400D2CDC` | dirty, clamp, pack, unpack, save path, xf_mix, plock, … |
+| `SAFE_CAVE` | `0x400D24D0`…`0x400D2CDC` | dirty, clamp, pack, unpack, save, xf_mix, **xf2**, plock |
+| `VOICE_RELOAD_CAVE` | `0x400D2E84`…`0x400D2EA0` | after xf_mix: `d2 ← MIDI_VOICE[track×0x44+flat]` |
 | `CAVE2` | `0x400D2EE6`…`0x400D3020` | rebuild lock mask |
-| `CODE2` | `0x400D6500`…`0x400D6600` | apply wrap, reload UI, **bank switch/invalidate**, scene-done, write remix |
-| `STUB` | `0x400D7600`…`0x400D7C48` | hold A/B, dial, LED addi stubs, pad/press/release, scene clear/copy/paste, morph |
+| `CODE2` | `0x400D6500`…`0x400D6600` | apply wrap, reload UI, bank switch/invalidate, scene-done, write remix |
+| `STUB` | `0x400D7600`…`0x400D7C48` | hold A/B, dial, LED addi, pad/press/release, scene UI, morph, **bank_publish** |
+| `PROJECT_CAVE` | `0x400E1EC4`…`0x400E2000` | Part Clear midisc wipe + after-project-load (CKPT seed) |
 | `MSC` | `0x400D6600` | live 4K bank (zeros in stock) |
 
-Cross-cave calls use **sentinel addresses** (`SENT_PACK`, `SENT_UNPACK`,
-`SENT_DIRTY`, `SENT_CLAMP`, `SENT_XF_MIX`, …) fixed up after link
-(`fix_jsr` in `build.py`).
+Never place code in `CLEAR_CAVE` (`0x400C4302` — stock xref table). xf2 must
+stay in `SAFE_CAVE` (moving it to `PROJECT_CAVE` hangs boot).
 
-DRAM (not in OS image): scene clipboard `CLIP = 0x460C9A00`, lock-list scratch
-above it.
+Cross-cave calls use **sentinel addresses** (`SENT_PACK`, `SENT_UNPACK`,
+`SENT_DIRTY`, `SENT_CLAMP`, `SENT_XF_MIX`, `SENT_VOICE_RELOAD`, …) fixed up after
+link (`fix_jsr` in `build.py`).
+
+DRAM (not in OS image): scene clipboard `CLIP = 0x460C9A00`, CKPT above it.
+Does not use octakit boot temp `0x47fc7410`…`0x47fd910f`.
 
 ---
 
@@ -101,7 +115,7 @@ Stock bytes asserted before splice (`build.py`).
 |------|------|------|
 | `GATE_A` / `GATE_B` | `0x400534CE` / `0x40052ECE` | MIDI hold path → hold stub (else stock audio) |
 | `DIAL_HOOK` | `0x4004E348` | dial load reads MSC when scene held |
-| `WRITE_HOOK` | `0x4005538A` | MIDI apply writes through midisc path |
+| `WRITE_HOOK` | `0x4005538A` | MIDI apply → write remix (8 bytes; cont `0x40055392`) |
 | `DISP` | `0x40031964` | display/overlay glue |
 | `PAD_HOOK` | `0x40031F44` | pads show locks from MSC |
 | `PRESS_HOOK` / `RELEASE_HOOK` | `0x400434CA` / `0x40054CB6` | press refresh / release remix |
@@ -114,6 +128,7 @@ Stock bytes asserted before splice (`build.py`).
 | Morph / XF after | `MORPH_EXIT`, `XF_AFTER1/2`, `XF_PUB*` | morph + post-XF remix |
 | Apply / save / reload | `STOCK_APPLY`, `SAVE_UI`, `RELOAD_UI`, … | unpack on apply; pack on save |
 | Bank write | `BANK_WR_SWITCH_*`, `BANK_WR_INIT_*` | preserve `d1–d7/a0–a6` around `move.l d0,BANK_PTR` |
+| `AFTER_PROJECT_LOAD` | `0x400622C6` | after stock `jsr faf0`: CKPT seed + unpack |
 
 Encoder unlock cave: `0x400C45B0` (press while held clears MSC cell).
 
@@ -123,8 +138,32 @@ Encoder unlock cave: `0x400C45B0` (press while held clears MSC cell).
 
 Stock `move.l d0, (0x46C82456)` at bank switch/init clobbered caller regs and
 broke sample load from virgin 1.40C projects.  
-`build_bank_switch` / `build_bank_invalidate` wrap that store with a
-ColdFire-safe save/restore (`lea`/`movem`, not `movem` to `-(sp)`).
+`build_bank_switch` / `build_bank_invalidate` / `build_bank_publish` wrap that
+store with a ColdFire-safe save/restore (`lea`/`movem`, not `movem` to `-(sp)`).
+
+| Site | Address | Stock context | Cave |
+|------|---------|---------------|------|
+| A | `0x400622aa` | Guarded; BANK_ID published **after** | pack → publish → unpack |
+| B | `0x40087d44` | Unconditional; BANK_ID published **before** | **publish → unpack** (no pack) |
+
+Site B must not pack (durable SAVE mid bank-load → wrong pattern). Always unpack
+after publish (wipes MSC).
+
+---
+
+## Full-B CTRL CC lock freeze (working)
+
+Unheld MIDI apply writes behind (`8f162`), then `write_remixed` runs `xf_mix`
+into `MIDI_VOICE` only. Stock then `CC_TX` (`0x4009EEC8`) still used dialed
+`d2` — at full scene B a B-locked CTRL CC looked locked but still transmitted.
+
+After `xf_mix`, `build_voice_reload_d2` sets `d2` from
+`MIDI_VOICE[track×0x44+flat]` so `CC_TX` / SOUND mirrors use the mix. Mid-XF
+with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
+`CC_TX`.
+
+`WRITE_HOOK` must cover **8** bytes (`WRITE_CONT = 0x40055392`). Cont
+`0x40055390` / LEN 6 landed inside `move.l #0x18b2` immediate.
 
 ---
 
@@ -137,5 +176,6 @@ ColdFire-safe save/restore (`lea`/`movem`, not `movem` to `-(sp)`).
 
 ## Build / flash reminder
 
-`python tools/build_midisc40.py` produces **your** `1.40MIDISC.bin` from **your**
-1.40C. Do not redistribute that binary. Flash/recovery: `docs/FLASHING.md`.
+`python tools/build_midisc40.py` produces **your** `1.40MIDISC5.bin` from **your**
+1.40C (splash `1.40MDISC5`). Do not redistribute that binary. Flash/recovery:
+`docs/FLASHING.md`.

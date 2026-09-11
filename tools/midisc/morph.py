@@ -498,14 +498,33 @@ def build_scene_applied() -> bytes:
     return a.link()
 
 
+def build_voice_reload_d2() -> bytes:
+    """d4=track, d6=flat. d2 = MIDI_VOICE[track*0x44+flat]. rts.
+
+    After xf_mix, stock still CC_TX / mirrors with dialed d2. Reload so full-B
+    locks (esp. CTRL CCs) stay frozen while mid-XF B-only still morphs.
+    """
+    a = Asm()
+    a.moveq(0x44, 0)
+    a.muls(4, 0)
+    a.add_dd(6, 0)
+    a.movea_imm(MIDI_VOICE, 0)
+    a.adda_d(0, 0)
+    a.mvz_b_ind(0, 2)
+    a.rts()
+    return a.link()
+
+
 def build_write_remixed() -> bytes:
     """After unlocked MIDI live write: re-apply scene x XF so locks win / XF holds.
 
+    Then reload d2 from VOICE so stock CC_TX uses the mixed lock (MIDISC5).
     No MIDI_FLAG gate — keep morph sinks live while UI is on audio.
     """
     a = Asm()
     a.hex(WRITE_STOCK)
     a.jsr(SENT_XF_MIX)
+    a.jsr(SENT_VOICE_RELOAD)
     a.jmp(WRITE_CONT)
     return a.link()
 

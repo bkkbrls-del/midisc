@@ -49,12 +49,17 @@ BANK_WR_SWITCH_B = 0x40087D44
 BANK_WR_INIT_A = 0x4001FBD0
 BANK_WR_INIT_B = 0x40025AA2
 BANK_WR_STOCK = "23c046c82456"
+# After jsr faf0 on project/bank load path (site A only)
+AFTER_PROJECT_LOAD = 0x400622C6  # stock jsr 0x400418e0
+AFTER_PROJECT_LOAD_STOCK = "4eb9400418e0"
+AFTER_PROJECT_LOAD_CONT = 0x400418E0
 
 SENT_UNPACK = 0x400D7F00
 SENT_PACK = 0x400D7F04
 SENT_DIRTY = 0x400D7F08
 SENT_REBUILD_MASK = 0x400D7F10
 SENT_CLAMP = 0x400D7F14  # scene-lock clamp (ARP LEG/MODE/SPD/RNG)
+SENT_VOICE_RELOAD = 0x400D7F18  # write_remixed: d2 <- MIDI_VOICE
 # SENT_XF_MIX defined with morph constants above
 
 BANK_PTR = 0x46C82456
@@ -71,6 +76,10 @@ BANK_DIRTY = 0x9B332
 UI_DIRTY = 0x100F8598
 PART_SAVED = 0x9B312  # u8[4]; STOCK_SAVE sets 1; RELOAD requires it
 PART_STAGING = 0x100AB196  # STOCK_SAVE copies shadow here (4 * 0x18b2)
+# Project/part-copy RAM image (4 * 0x18b2). Part Paste writes here; pack must
+# refresh it (stock Reload second half) or Project Save keeps sticky paste.
+PART_PROJECT = 0x100A4ECE
+PART_PROJECT_SPAN = 0x62C8  # 4 * 0x18b2
 
 STOCK_APPLY = 0x40009094
 APPLY_CONT = 0x4000909C  # after 8-byte prologue
@@ -133,8 +142,8 @@ DISP = 0x40031964
 DISP_STOCK = "2240245f4ed1"
 WRITE_HOOK = 0x4005538A
 WRITE_STOCK = "1a82223c000018b2"
-WRITE_LEN = 6
-WRITE_CONT = 0x40055390
+WRITE_LEN = 8  # full move.b + move.l #0x18b2 (LEN 6 landed mid-imm)
+WRITE_CONT = 0x40055392
 GREY_ENTER = 0x40034754  # bne empty @ 347B0 — nop so MIDI scans MSC locks
 GREY_ENTER_STOCK = "665a"
 GREY_ENTER_NOP = "4e71"
@@ -196,8 +205,16 @@ ENC_UNLOCK_CAVE_END = 0x400C4700
 
 # Safe ROM zero gap (NOT 0x4010CDD1 — that is DSP payload and bricks).
 # Leave headroom before the only abs xref at 0x400D2CDC.
+# UNSAFE: stock ptr table @ 400ba8fa -> 400c4302 / 400c4702. Never place code here.
+CLEAR_CAVE = 0x400C4302
+CLEAR_CAVE_END = 0x400C444C
+PROJECT_CAVE = 0x400E1EC4  # Part Clear (hooks off; cmpa bound only)
+PROJECT_CAVE_END = 0x400E2000
 SAFE_CAVE = 0x400D24D0
 SAFE_CAVE_END = 0x400D2CDC  # up to abs xref @ 0x400D2CDC
+# Zero pad before PLAYBACK dashes; voice reload after xf_mix (CC_TX d2).
+VOICE_RELOAD_CAVE = 0x400D2E84
+VOICE_RELOAD_CAVE_END = 0x400D2EA0  # 28B
 # Second zero gap after PLAYBACK string tables (stock zeros through 0x400D301F).
 CAVE2 = 0x400D2EE6
 CAVE2_END = 0x400D3020
@@ -205,8 +222,8 @@ CAVE2_END = 0x400D3020
 STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
 SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
 OUT = ROOT / "out" / "mainos_midisc40.bin"
-DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC.bin"
-VER = "1.40MIDISC"
+VER = "1.40MDISC5"  # splash <=10; golden files use 1.40MIDISC5
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC5.bin"
 
 # Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
 RELEASE_HOOK = 0x40054CB6

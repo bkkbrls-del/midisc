@@ -103,6 +103,11 @@ def build_copy_scene(clip: int) -> bytes:
 
 
 def build_paste_scene(clip: int) -> bytes:
+    """MIDI scene paste: put locks like hold store, then stock audio paste.
+
+    CLIP -> MSC[scene], LAST, pack, dirty. No lock-mask invalidate / xf_mix
+    (unnecessary for install; hold still remixes on encoder).
+    """
     a = Asm()
     a.move_l_abs_d(0x460D0FFA, 0)
     a.cmpi(0x10, 0)
@@ -128,13 +133,11 @@ def build_paste_scene(clip: int) -> bytes:
     a.move_b_d_abs(0, LAST_PART)
     a.jsr(SENT_PACK)
     a.jsr(SENT_DIRTY)
-    emit_invalidate_lock_masks(a)
-    emit_force_xf_mix(a)
-    a.jsr(SENT_XF_MIX)
 
     a.label("stock")
     a.jmp(STOCK_PASTE_SCENE)
     return a.link()
+
 
 
 def build_release_mix() -> bytes:
