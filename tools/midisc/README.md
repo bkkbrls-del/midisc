@@ -1,4 +1,4 @@
-﻿# midisc package
+# midisc package
 
 Patch sources for golden **1.40MIDISC5** on OS 1.40C (splash `1.40MDISC5`).
 

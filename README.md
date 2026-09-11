@@ -1,4 +1,4 @@
-# midisc — 1.40MIDISC5
+# midisc — `1.40MIDISC5`
 
 ColdFire patch that adds **MIDI scene locks** to official Octatrack **OS 1.40C**.
 
@@ -16,51 +16,51 @@ There is **no prebuilt firmware in this repo**. You rebuild from your own 1.40C
 - Solid green scene-lock LEDs (no blink path)
 - ARP scene-lock values clamped to real knob ranges
 
-Technical map: **docs/TECH.md**. Constants: 	ools/midisc/memory_map.py.
+Technical map: **`docs/TECH.md`**. Constants: `tools/midisc/memory_map.py`.
 
 ## Rebuild from stock 1.40C
 
 Requirements: Python 3. Your own official **1.40C** (never commit/share it).
 
-`ash
+```bash
 # 1) Obtain stock (optional helper)
 powershell -ExecutionPolicy Bypass -File scripts/fetch-os.ps1   # or scripts/fetch-os.sh
 
 # 2) Patch MAIN OS + repack flash image
 python tools/build_midisc40.py
-`
+```
 
 Pipeline inside the build:
 
-1. ensure_stock() — use out/raw/section_3_MAIN_OS.bin if present, else
-   extract from downloads/extracted/OCTATRACK_OS1.40C.syx
-2. Assemble caves/stubs (	ools/midisc/*.py + ot3_asm.py) and splice hooks
-3. 	ools/repack_140fx.py → Desktop **1.40MIDISC5.bin** (splash 1.40MDISC5, ≤10 chars)
-   (+ syx under out/)
+1. `ensure_stock()` — use `out/raw/section_3_MAIN_OS.bin` if present, else
+   extract from `downloads/extracted/OCTATRACK_OS1.40C.syx`
+2. Assemble caves/stubs (`tools/midisc/*.py` + `ot3_asm.py`) and splice hooks
+3. `tools/repack_140fx.py` → Desktop **`1.40MIDISC5.bin`** (splash `1.40MDISC5`, ≤10 chars)
+   (+ syx under `out/`)
 
-Then flash **that build’s** .bin (CF root → OS UPGRADE). Details:
-docs/FLASHING.md.
+Then flash **that build’s** `.bin` (CF root → OS UPGRADE). Details:
+`docs/FLASHING.md`.
 
 ### Sources
 
 | path | role |
 |------|------|
-| 	ools/midisc/build.py | place code, patch sites, call repack |
-| 	ools/midisc/hold.py | A/B hold store, dial, unlock, ARP clamp |
-| 	ools/midisc/parts.py | pack/unpack, save/reload, bank preserve, after-project-load |
-| 	ools/midisc/morph.py | XF mix / morph / plock / write remix + VOICE→d2 |
-| 	ools/midisc/scene_ui.py | clear / copy / paste |
-| 	ools/midisc/emit.py | shared MSC helpers |
-| 	ools/midisc/memory_map.py | all 1.40C addresses |
-| 	ools/ot3_asm.py | ColdFire assembler |
-| 	ools/extract_main_os.py | syx → MAIN OS |
-| 	ools/repack_140fx.py | MAIN OS → .bin / .syx |
-| 	ools/syx_elektron.py, plib_elektron.py | ELEK container |
+| `tools/midisc/build.py` | place code, patch sites, call repack |
+| `tools/midisc/hold.py` | A/B hold store, dial, unlock, ARP clamp |
+| `tools/midisc/parts.py` | pack/unpack, save/reload, bank preserve, after-project-load |
+| `tools/midisc/morph.py` | XF mix / morph / plock / write remix + VOICE→d2 |
+| `tools/midisc/scene_ui.py` | clear / copy / paste |
+| `tools/midisc/emit.py` | shared MSC helpers |
+| `tools/midisc/memory_map.py` | all 1.40C addresses |
+| `tools/ot3_asm.py` | ColdFire assembler |
+| `tools/extract_main_os.py` | syx → MAIN OS |
+| `tools/repack_140fx.py` | MAIN OS → `.bin` / `.syx` |
+| `tools/syx_elektron.py`, `aplib_elektron.py` | ELEK container |
 
 ## ⚠️ Safety
 
 Modified OS can brick the unit; not affiliated with Elektron; flash at your
-own risk. **Do not share built .bin / .syx** (they contain Elektron’s OS).
+own risk. **Do not share built `.bin` / `.syx`** (they contain Elektron’s OS).
 Share this repo; everyone builds from their own 1.40C.
 
 *Octatrack* / *Elektron* — trademarks of Elektron Music Machines MAV AB.
