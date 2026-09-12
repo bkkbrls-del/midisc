@@ -262,18 +262,32 @@ def build_bank_switch() -> bytes:
 
 
 def build_bank_publish() -> bytes:
-    """d0=new BANK_PTR. Publish then unpack. Never pack (Bam Site B).
+    """d0=new BANK_PTR. Publish, then unpack ONLY IF THE BANK CHANGED.
 
     Site B (0x40087d44): BANK_ID already published. Pack here = Bam emu bug
     (durable SAVE mid bank-load → wrong pattern). Publish + unpack only.
     Octakit: kits keep part layout/offsets; midisc DRAM stays at CLIP/CKPT
     (0x460C9A00+) — never 0x47fc7410..0x47fd910f boot temp.
+
+    Guard (Bam, 12 Sep 2026): stock's other site, 0x400622aa, is wrapped in
+    a cmpl/beqs that skips unless BANK_PTR actually changes; this site is
+    stock's unconditional clamp-and-set path and fires during PROJECT LOAD
+    with the part index still at the default bank. unpack's shadow→working
+    sync then lands 144 bytes in the wrong bank's part record -- harmless
+    only when the saved bank IS the default, which is "bank 1 reloads
+    clean, every other bank corrupts". Mirror stock's own guard: keep the
+    store (stock semantics), skip it and the unpack when old == new. The port
+    bisected the symptom to this one site; the guard itself is untested
+    there -- a save on bank 3 + reload is the test.
     """
     a = Asm()
     a.hex("4fefffc4")  # lea -0x3c(sp),sp
     a.hex("48d77ffe")  # movem.l d1-d7/a0-a6,(sp)
-    a.move_l_d_abs(0, BANK_PTR)
+    a.hex(f"b0b9{BANK_PTR:08x}")  # cmp.l (BANK_PTR).l,d0 -- old vs new
+    a.hex("670c")  # beq.s same: unchanged, so the store is a no-op too
+    a.move_l_d_abs(0, BANK_PTR)  # publish (the store stock made here)
     a.jsr(SENT_UNPACK)
+    a.label("same")
     a.hex("4cd77ffe")
     a.hex("4fef003c")
     a.rts()
