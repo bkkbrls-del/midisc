@@ -1,21 +1,23 @@
-# midisc 1.40MIDISC5
+# midisc 1.40MSCN6
 
 **Rebuild:** `python tools/build_midisc40.py` (needs your own 1.40C)  
-**Output:** `~/Desktop/1.40MIDISC5.bin` · splash `1.40MDISC5`  
-**Syx:** `out/OCTATRACK_1.40MIDISC5.syx`
+**Output:** `~/Desktop/1.40MSCN6.bin` · splash `1.40MSCN6` (≤10)  
+**Syx:** `out/OCTATRACK_1.40MSCN6.syx`
 
-## Working pieces
+## Contract
 
-| Area | Where |
-|------|--------|
-| ARP clamp `PAGE_MODE==2`, flat-12 | `hold.py` -> `SENT_CLAMP` |
-| MSC live bank + hold/dial | `hold.py`, `MSC @ 0x400D6600` |
-| Persist sparse `+0x90522` / `MS` + durable save | `parts.py` |
-| After-project-load CKPT seed | `parts.py` -> `PROJECT_CAVE` |
-| Bank Site A pack / Site B publish-only | `parts.py` bank_* -> `CODE2` / `STUB` |
-| Full-B CC lock -> VOICE reload `d2` | `morph.py` -> `VOICE_RELOAD_CAVE` |
-| Solid green LEDs | nop `GREY_ENTER` / `LED_SKIP_B`; addi -> rts stubs |
-| XF morph / plock | `morph.py` |
-| Hook list + caves | `docs/TECH.md`, `memory_map.py`, `build.py` |
+| Topic | Rule |
+|-------|------|
+| Empty XF side | `TRIG_SNAP` if step locked, else behind (`8f162`) |
+| Locked side | MSC scene cell |
+| `xf_mix` | writes `MIDI_VOICE`; also `LFO_BASE` for scene-locked flats |
+| No scenes | stock plocks only (skip remix) |
+| Mid-XF | no LFO row poke every step |
+| Full A / full B | scene-locked flats forced onto LFO row (absolute scene) |
+| Apply | `STOCK_APPLY` stays stock |
+| Banks | Site A pack+publish+unpack; Site B publish+unpack only |
+| Boot | xf2 in `SAFE_CAVE`; never body-hook `faf0`/`fbb4`; never `CLEAR_CAVE` |
+
+Octakit compose notes: `docs/TECH.md` → *Compose with Octakit*.
 
 Do not redistribute built images.

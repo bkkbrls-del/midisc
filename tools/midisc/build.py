@@ -22,7 +22,7 @@ from .scene_ui import (
     build_paste_scene, build_release_mix,
 )
 from .morph import (
-    build_morph, build_rebuild_lock_mask, build_scene_after_plock,
+    build_morph, build_plock_morph_body, build_scene_after_plock,
     build_scene_applied, build_voice_reload_d2, build_write_remixed, build_xf_after, build_xf_mix_out,
 )
 
@@ -129,6 +129,9 @@ def main() -> None:
     sc += build_xf_after(XF_AFTER2_CONT, XF_AFTER2_STOCK)
     abs_plock = SAFE_CAVE + len(sc)
     sc += build_scene_after_plock()
+    # Morph-rate XF remix (delta-gated) — stub is full; keep in SAFE
+    abs_morph = SAFE_CAVE + len(sc)
+    sc += build_morph()
     if SAFE_CAVE + len(sc) > SAFE_CAVE_END:
         sys.exit(f"SAFE_CAVE overrun {len(sc)} (need xf2 in SAFE; do not move to PROJECT)")
     if not (SAFE_CAVE <= abs_xf2 < SAFE_CAVE_END):
@@ -136,16 +139,16 @@ def main() -> None:
     print(f"SAFE_CAVE {len(sc)} @ {SAFE_CAVE:#x} free {SAFE_CAVE_END - SAFE_CAVE - len(sc)}")
     print(f"  dirty={abs_dirty:#x} clamp={abs_clamp:#x} pack={abs_pack:#x} unpack={abs_unpack:#x}")
     print(f"  save={abs_save:#x} rel_after={abs_reload_after:#x} xf_mix={abs_xf_mix:#x}")
-    print(f"  xf2={abs_xf2:#x} plock={abs_plock:#x}")
+    print(f"  xf2={abs_xf2:#x} plock={abs_plock:#x} morph={abs_morph:#x}")
 
     c2b = bytearray()
     abs_rebuild = CAVE2 + len(c2b)
-    c2b += build_rebuild_lock_mask()
+    c2b += build_plock_morph_body()
     if CAVE2 + len(c2b) > CAVE2_END:
         sys.exit(f"CAVE2 overrun {len(c2b)}")
     if any(img[off(CAVE2) : off(CAVE2_END)]):
         sys.exit("CAVE2 not empty")
-    print(f"CAVE2 {len(c2b)} @ {CAVE2:#x} rebuild={abs_rebuild:#x}")
+    print(f"CAVE2 {len(c2b)} @ {CAVE2:#x} plock_body={abs_rebuild:#x}")
     if fix_jsr(after_proj_b, SENT_UNPACK, abs_unpack) != 1:
         sys.exit("after_project_load unpack sentinel")
 
@@ -207,13 +210,11 @@ def main() -> None:
     for name, piece in pieces.items():
         addrs[name] = STUB + len(blob)
         blob += piece
-    abs_morph = STUB + len(blob)
-    blob += build_morph()
-    addrs["morph"] = abs_morph
     # Bam Site B: publish+unpack only (no pack) — fits STUB free
     abs_bank_pub = STUB + len(blob)
     bank_pub_b = bytearray(build_bank_publish())
     blob += bank_pub_b
+    addrs["morph"] = abs_morph  # SAFE_CAVE (morph-rate XF remix)
     addrs["plock"] = abs_plock
     addrs["pack"] = abs_pack
     addrs["unpack"] = abs_unpack
@@ -233,8 +234,8 @@ def main() -> None:
         sys.exit(f"stub clamp sentinels {n_clamp}")
     n_unp = fix_jsr(blob, SENT_UNPACK, addrs["unpack"])
     n_dirt = fix_jsr(blob, SENT_DIRTY, abs_dirty)
-    if n_unp < 2:
-        sys.exit(f"stub unpack sentinels {n_unp} (need morph+bank_pub)")
+    if n_unp < 1:
+        sys.exit(f"stub unpack sentinels {n_unp} (need bank_pub)")
     n_rel_mix = fix_jsr(blob, SENT_XF_MIX, abs_xf_mix)
     n_rb_stub = fix_jsr(blob, SENT_REBUILD_MASK, addrs["rebuild"])
     # rebuild only from plock (SAFE); stubs must not call it (H-safe scene/hold)
@@ -262,13 +263,15 @@ def main() -> None:
     n_sc_mix = fix_jsr(sc, SENT_XF_MIX, abs_xf_mix)
     n_sc_dirt = fix_jsr(sc, SENT_DIRTY, abs_dirty)
     n_sc_rb = fix_jsr(sc, SENT_REBUILD_MASK, addrs["rebuild"])
-    if n_sc_unp < 1:
-        sys.exit(f"SAFE_CAVE unpack sentinels {n_sc_unp}")
+    if n_sc_unp < 2:
+        sys.exit(f"SAFE_CAVE unpack sentinels {n_sc_unp} (need xf paths + morph)")
     # xf2 lives in SAFE_CAVE (M5 boot layout)
-    if n_sc_rb != 0:
-        sys.exit(f"SAFE_CAVE rebuild sentinels {n_sc_rb} (need 0; plock must not rebuild)")
+    if n_sc_rb != 1:
+        sys.exit(f"SAFE_CAVE plock-body sentinel {n_sc_rb} (need 1; pure-end row sync)")
+    if n_sc_mix < 2:
+        sys.exit(f"SAFE_CAVE xf_mix sentinels {n_sc_mix} (need xf2/plock + morph)")
 
-    # morph is in SAFE_CAVE; unpack sentinel fixed via n_sc_unp
+    # morph lives in SAFE_CAVE (rate-matched XF remix)
 
     img[off(SAFE_CAVE) : off(SAFE_CAVE) + len(sc)] = bytes(sc)
     img[off(PROJECT_CAVE) : off(PROJECT_CAVE) + len(clear_pt_b)] = bytes(clear_pt_b)
@@ -345,7 +348,8 @@ def main() -> None:
     img[off(WRITE_HOOK) : off(WRITE_HOOK) + WRITE_LEN] = jmp_abs(abs_write_mix) + b"\x4e\x71"
     img[off(PLOCK_DONE) : off(PLOCK_DONE) + PLOCK_DONE_LEN] = jmp_abs(addrs["plock"]) + b"\x4e\x71\x4e\x71"
 
-    img[off(STOCK_APPLY) : off(STOCK_APPLY) + 8] = jmp_abs(abs_apply) + b"\x4e\x71"
+    # STOCK_APPLY left stock — apply pack/unpack during project load hangs HW
+    # (MIDISC0B). Part edits still pack via hold/dial; ensure unpacks on touch.
     img[off(SAVE_UI) : off(SAVE_UI) + 6] = jsr_abs(abs_save)
     img[off(RELOAD_UI) : off(RELOAD_UI) + 6] = jsr_abs(abs_reload)
     img[off(RELOAD_UI_B) : off(RELOAD_UI_B) + 6] = jsr_abs(abs_reload)
@@ -401,7 +405,6 @@ def main() -> None:
         (off(SCENE_DONE_B), off(SCENE_DONE_B) + 6),
         (off(WRITE_HOOK), off(WRITE_HOOK) + WRITE_LEN),
         (off(PLOCK_DONE), off(PLOCK_DONE) + PLOCK_DONE_LEN),
-        (off(STOCK_APPLY), off(STOCK_APPLY) + 8),
         (off(SAVE_UI), off(SAVE_UI) + 6),
         (off(RELOAD_UI), off(RELOAD_UI) + 6),
         (off(RELOAD_UI_B), off(RELOAD_UI_B) + 6),
@@ -459,6 +462,8 @@ def main() -> None:
         sys.exit("XF_AFTER2 must jmp xf2")
     if bytes(img[off(AFTER_PROJECT_LOAD) : off(AFTER_PROJECT_LOAD) + 6]) != jsr_abs(abs_after_proj):
         sys.exit("AFTER_PROJECT_LOAD must jsr after_proj")
+    if bytes(img[off(STOCK_APPLY) : off(STOCK_APPLY) + 8]) != bytes.fromhex("4fefff9848d77cfc"):
+        sys.exit("STOCK_APPLY must stay stock (load hang)")
     if bytes(img[off(BANK_WR_SWITCH_A) : off(BANK_WR_SWITCH_A) + 6]) != jsr_abs(abs_bank_sw):
         sys.exit("BANK_WR_SWITCH_A must jsr bank_switch")
     if bytes(img[off(BANK_WR_SWITCH_B) : off(BANK_WR_SWITCH_B) + 6]) != jsr_abs(abs_bank_pub):
@@ -507,15 +512,26 @@ def main() -> None:
     if bytes.fromhex("80000002") in cave:
         sys.exit("must not use 80000002 as part index (use 100b14cf)")
     # Morph: sinks + CC; 8f162 only as behind READ (no store to UI).
-    # H listen via VOICE; behind READ; never SOUND (sticky unlockeds) / never LFO.
+    # H listen via VOICE; scene-locked also LFO; behind READ; never SOUND.
     if bytes.fromhex(f"{MIDI_SOUND:08x}") in xf_mix_b:
         sys.exit("xf_mix must NOT write MIDI_SOUND (aliases unlocked; sticky reboot)")
     if bytes.fromhex(f"{MIDI_VOICE:08x}") not in xf_mix_b:
         sys.exit("xf_mix must write MIDI_VOICE")
+    if bytes.fromhex(f"{LFO_BASE:08x}") not in xf_mix_b:
+        sys.exit("xf_mix must write LFO for scene-locked flats")
     if bytes.fromhex(f"{MIDI_BEHIND:08x}") not in xf_mix_b:
         sys.exit("xf_mix must read 8f162 as behind")
-    if bytes.fromhex(f"{LFO_BASE:08x}") in xf_mix_b:
-        sys.exit("xf_mix must not write LFO_BASE (Y plock owns trigxscene)")
+    # xf_mix may READ TRIG_SNAP as empty-side trig layer; must not abs-store into it
+    lfo = bytes.fromhex(f"{TRIG_SNAP:08x}")
+    i = 0
+    while True:
+        j = xf_mix_b.find(lfo, i)
+        if j < 0:
+            break
+        pref = xf_mix_b[max(0, j - 2) : j]
+        if pref not in (bytes.fromhex("207c"), bytes.fromhex("d1fc")):
+            sys.exit(f"xf_mix TRIG_SNAP must be movea/adda read (pref={pref.hex()} at {j})")
+        i = j + 1
     live_adda = bytes.fromhex(f"d1fc{MIDI_BEHIND:08x}")
     i = 0
     while True:

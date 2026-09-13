@@ -1,9 +1,9 @@
-# midisc technical map (`1.40MIDISC5`)
+# midisc technical map (`1.40MSCN6`)
 
 Facts the shipped patch relies on. Base image: stock **1.40C** MAIN OS
 (`BASE = 0x40000400`). All addresses in `tools/midisc/memory_map.py`.
 
-Splash field is <=10 chars: **`1.40MDISC5`**. Flash filename: **`1.40MIDISC5.bin`**.
+Splash field is <=10 chars: **`1.40MSCN6`**. Flash filename: **`1.40MSCN6.bin`**.
 
 ---
 
@@ -83,15 +83,53 @@ fills CF->bank/`PART_PROJECT`/staging but not DRAM CKPT). Never body-hook
 
 ---
 
+## XF × trig morph (working)
+
+Audio-like rule: scenes are an offset layer on top of step locks; pure ends are
+absolute scene for locked flats.
+
+| Layer | Source |
+|-------|--------|
+| Locked XF side | MSC scene cell |
+| Empty XF side | `TRIG_SNAP[track][flat]` if that step locked it, else `MIDI_BEHIND` (`8f162`) |
+| No scenes assigned | skip remix — stock plocks only |
+
+`TRIG_SNAP` is DRAM (`u8[8][32]` after the lock list). Plock trampoline snaps the
+raw row before remix. Treat `0xFF` as empty (never as 127).
+
+`xf_mix` (in `SAFE_CAVE`):
+
+- Writes lerp into `MIDI_VOICE`
+- For scene-locked flats also writes `LFO_BASE` (`0x46C78960`) so XF updates
+  without waiting for a step
+- Does **not** write `MIDI_SOUND` (aliases unlocked cells → sticky reboot)
+
+Plock after-path (`build_scene_after_plock` → thin trampoline in `SAFE_CAVE`,
+pure-end body in `CAVE2` via `SENT_REBUILD_MASK`):
+
+- Snap → `TRIG_SNAP`; if scenes assigned → `jsr xf_mix`
+- **Only at weight 0 (full A) or 0x7F (full B)** poke LFO row for flats locked on
+  that end (absolute scene; step locks vanish at the stop)
+- Mid-XF: do **not** poke the LFO row every step (that reintroduces audible
+  stepping on both-scene lerps)
+
+Morph-rate path (`MORPH_EXIT` → `build_morph` in `SAFE_CAVE`) ensures MSC presence
+only. It must **not** call `xf_mix` (rate-matched mix starves trig playback).
+
+`WRITE_HOOK` / unheld apply: remix into VOICE, then `build_voice_reload_d2` so
+stock `CC_TX` (`0x4009EEC8`) uses the mixed value (full-B CTRL CC freeze).
+
+---
+
 ## Code placement (ROM caves on 1.40C)
 
 | Region | Range | Contents |
 |--------|-------|----------|
-| `SAFE_CAVE` | `0x400D24D0`...`0x400D2CDC` | dirty, clamp, pack, unpack, save, xf_mix, **xf2**, plock |
+| `SAFE_CAVE` | `0x400D24D0`...`0x400D2CDC` | dirty, clamp, pack, unpack, save, xf_mix, **xf2**, plock trampoline, **morph** |
 | `VOICE_RELOAD_CAVE` | `0x400D2E84`...`0x400D2EA0` | after xf_mix: `d2 <- MIDI_VOICE[track*0x44+flat]` |
-| `CAVE2` | `0x400D2EE6`...`0x400D3020` | rebuild lock mask |
-| `CODE2` | `0x400D6500`...`0x400D6600` | apply wrap, reload UI, bank switch/invalidate, scene-done, write remix |
-| `STUB` | `0x400D7600`...`0x400D7C48` | hold A/B, dial, LED addi, pad/press/release, scene UI, morph, **bank_publish** |
+| `CAVE2` | `0x400D2EE6`...`0x400D3020` | pure-end LFO row sync body |
+| `CODE2` | `0x400D6500`...`0x400D6600` | reload UI, bank switch/invalidate, scene-done, write remix |
+| `STUB` | `0x400D7600`...`0x400D7C48` | hold A/B, dial, LED addi, pad/press/release, scene UI, **bank_publish** |
 | `PROJECT_CAVE` | `0x400E1EC4`...`0x400E2000` | Part Clear midisc wipe + after-project-load (CKPT seed) |
 | `MSC` | `0x400D6600` | live 4K bank (zeros in stock) |
 
@@ -99,11 +137,12 @@ Never place code in `CLEAR_CAVE` (`0x400C4302` -- stock xref table). xf2 must
 stay in `SAFE_CAVE` (moving it to `PROJECT_CAVE` hangs boot).
 
 Cross-cave calls use **sentinel addresses** (`SENT_PACK`, `SENT_UNPACK`,
-`SENT_DIRTY`, `SENT_CLAMP`, `SENT_XF_MIX`, `SENT_VOICE_RELOAD`, ...) fixed up after
-link (`fix_jsr` in `build.py`).
+`SENT_DIRTY`, `SENT_CLAMP`, `SENT_XF_MIX`, `SENT_REBUILD_MASK`,
+`SENT_VOICE_RELOAD`, ...) fixed up after link (`fix_jsr` in `build.py`).
 
-DRAM (not in OS image): scene clipboard `CLIP = 0x460C9A00`, CKPT above it.
-Does not use octakit boot temp `0x47fc7410`...`0x47fd910f`.
+DRAM (not in OS image): scene clipboard `CLIP = 0x460C9A00`, CKPT above it,
+`TRIG_SNAP` after the lock list. Does not use octakit boot temp
+`0x47fc7410`...`0x47fd910f`.
 
 ---
 
@@ -116,6 +155,7 @@ Stock bytes asserted before splice (`build.py`).
 | `GATE_A` / `GATE_B` | `0x400534CE` / `0x40052ECE` | MIDI hold path -> hold stub (else stock audio) |
 | `DIAL_HOOK` | `0x4004E348` | dial load reads MSC when scene held |
 | `WRITE_HOOK` | `0x4005538A` | MIDI apply -> write remix (8 bytes; cont `0x40055392`) |
+| `PLOCK_DONE` | `0x4009D1DE` | after plock overlay -> snap + optional xf_mix + pure-end sync |
 | `DISP` | `0x40031964` | display/overlay glue |
 | `PAD_HOOK` | `0x40031F44` | pads show locks from MSC |
 | `PRESS_HOOK` / `RELEASE_HOOK` | `0x400434CA` / `0x40054CB6` | press refresh / release remix |
@@ -126,9 +166,11 @@ Stock bytes asserted before splice (`build.py`).
 | `LED_ADDI_A/B` | `0x40034764` / `0x40034950` | jsr stubs that **`rts`** (solid green, not blink) |
 | `GREY_CELL` | `0x4004E6EA` | grey cell base for MIDI |
 | Morph / XF after | `MORPH_EXIT`, `XF_AFTER1/2`, `XF_PUB*` | morph + post-XF remix |
-| Apply / save / reload | `STOCK_APPLY`, `SAVE_UI`, `RELOAD_UI`, ... | unpack on apply; pack on save |
+| Save / reload UI | `SAVE_UI`, `RELOAD_UI`, ... | pack on save; unpack on reload |
 | Bank write | `BANK_WR_SWITCH_*`, `BANK_WR_INIT_*` | preserve `d1-d7/a0-a6` around `move.l d0,BANK_PTR` |
 | `AFTER_PROJECT_LOAD` | `0x400622C6` | after stock `jsr faf0`: CKPT seed + unpack |
+
+**Not patched:** `STOCK_APPLY` (`0x40009094`) — left stock. See *Compose with Octakit*.
 
 Encoder unlock cave: `0x400C45B0` (press while held clears MSC cell).
 
@@ -174,8 +216,29 @@ with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
 
 ---
 
+## Compose with Octakit
+
+Checked against sambanks/octabam modules (`midi-scenes`, `octakit`, `scenes-kits`)
+and emuyia/ems-octakit (pinned ca3b527). MIDI-scenes behaviour is unchanged;
+only the apply site ownership differs from older midisc builds.
+
+| Finding | Detail |
+|---------|--------|
+| Shared clash | Older midisc hooked `STOCK_APPLY` (`0x40009094`) for pack/unpack. Octakit also needs that site for kit engine-part-load. Ledger/compose refused the pair without a `scenes-kits` bridge. |
+| MSCN6 choice | Leave `STOCK_APPLY` **stock**. Build asserts stock bytes remain. Wrapping apply during project load also hung HW. |
+| Who owns apply | Octakit can own apply alone. Midisc follows parts via hold/dial/pad `emit_ensure_msc` + Part Save/Reload hooks + bank Site A/B + after-project CKPT seed. |
+| Bam Site B | Publish + unpack, never pack — keep. |
+| DRAM | Midisc does not use octakit boot temp `0x47fc7410`...`0x47fd910f`. |
+| Still open | Part Save/Reload menu hooks vs Octakit LOAD/SAVE KIT UI (unmeasured). Kits untethered from banks vs MSC keyed off `BANK_PTR` (Kits-aware form later). |
+
+Keep stock for compose: `STOCK_APPLY`, never body-hook `faf0`/`fbb4`, never
+`CLEAR_CAVE`. Prefer not reclaiming OS zero-run caves if targeting octabam DRAM
+loader placement later (`gas_port` / `0x40a955e0`).
+
+---
+
 ## Build / flash reminder
 
-`python tools/build_midisc40.py` produces **your** `1.40MIDISC5.bin` from **your**
-1.40C (splash `1.40MDISC5`). Do not redistribute that binary. Flash/recovery:
+`python tools/build_midisc40.py` produces **your** `1.40MSCN6.bin` from **your**
+1.40C (splash `1.40MSCN6`). Do not redistribute that binary. Flash/recovery:
 `docs/FLASHING.md`.

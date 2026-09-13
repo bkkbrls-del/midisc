@@ -1,22 +1,27 @@
-# midisc — `1.40MIDISC5`
+# midisc — `1.40MSCN6`
 
 ColdFire patch that adds **MIDI scene locks** to official Octatrack **OS 1.40C**.
 
-There is **no prebuilt firmware in this repo**. You rebuild from your own 1.40C
+There is **no prebuilt firmware in this repo**. Rebuild from your own 1.40C
 (same extract → patch MAIN OS → repack path used by octabam-style tooling).
 
 ## Behaviour
 
-- MIDI track scene A/B locks + XF morph between scenes
+- MIDI track scene A/B locks + XF morph between scenes and step plocks
+- Empty XF side uses the trig layer when a step is locked, else machine behind
+- Full A / full B: scene-locked flats are absolute (step locks not heard on that end)
+- Mid-XF: continuous lerp without re-stamping the LFO row every trig (no step jumps)
 - Locks survive Part Save → reboot (sparse persist in the part window)
 - Part Copy/Paste/Clear + Part Reload midisc; project save/reload keeps locks (all parts)
 - Bank load keeps machine regs (1.40C sample load stays intact)
 - Site B bank publish does **not** pack (avoids durable SAVE mid bank-load)
+- `STOCK_APPLY` left stock (compose-friendly with Octakit; avoids project-load hang)
 - Full scene B: CTRL CC locks stay frozen on dial (CC_TX uses mixed VOICE)
 - Solid green scene-lock LEDs (no blink path)
 - ARP scene-lock values clamped to real knob ranges
 
-Technical map: **`docs/TECH.md`**. Constants: `tools/midisc/memory_map.py`.
+Technical map: **`docs/TECH.md`**. Octakit notes: same file, *Compose with Octakit*.  
+Constants: `tools/midisc/memory_map.py`.
 
 ## Rebuild from stock 1.40C
 
@@ -35,7 +40,7 @@ Pipeline inside the build:
 1. `ensure_stock()` — use `out/raw/section_3_MAIN_OS.bin` if present, else
    extract from `downloads/extracted/OCTATRACK_OS1.40C.syx`
 2. Assemble caves/stubs (`tools/midisc/*.py` + `ot3_asm.py`) and splice hooks
-3. `tools/repack_140fx.py` → Desktop **`1.40MIDISC5.bin`** (splash `1.40MDISC5`, ≤10 chars)
+3. `tools/repack_140fx.py` → Desktop **`1.40MSCN6.bin`** (splash `1.40MSCN6`, ≤10 chars)
    (+ syx under `out/`)
 
 Then flash **that build’s** `.bin` (CF root → OS UPGRADE). Details:

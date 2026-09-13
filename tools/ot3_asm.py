@@ -53,6 +53,10 @@ class Asm:
     def bra(self, name: str) -> "Asm":
         return self._br("60", name)
 
+    def bsr(self, name: str) -> "Asm":
+        """bsr.w — PC-relative subroutine call."""
+        return self._br("61", name)
+
     def beq(self, name: str) -> "Asm":
         return self._br("67", name)
 

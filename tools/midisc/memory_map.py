@@ -27,6 +27,8 @@ LOCK_ENT_SIZE = 3
 LOCK_ENTS_MAX = 32
 LOCK_MAGIC_VAL = 0x4D53434C  # 'MSCL' — must not false-match DRAM junk
 LOCK_LAST_XF = LOCK_ENTS + LOCK_ENTS_MAX * LOCK_ENT_SIZE  # u8; 0xFF = force remix
+TRIG_SNAP = (LOCK_LAST_XF + 7) & ~3  # u8[8][32] raw trig layer for XF empty side
+TRIG_SNAP_STRIDE = 32
 
 SPARSE_OFF = 0x90522
 # SAVE shadow window @ bank+part*18b2+0x9504A; sparse at +0x17A2 inside it
@@ -222,8 +224,8 @@ CAVE2_END = 0x400D3020
 STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
 SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
 OUT = ROOT / "out" / "mainos_midisc40.bin"
-VER = "1.40MDISC5"  # splash <=10; golden files use 1.40MIDISC5
-DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC5.bin"
+VER = "1.40MSCN6"  # splash <=10
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MSCN6.bin"
 
 # Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
 RELEASE_HOOK = 0x40054CB6

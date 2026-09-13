@@ -1,6 +1,6 @@
 # midisc package
 
-Patch sources for golden **1.40MIDISC5** on OS 1.40C (splash `1.40MDISC5`).
+Patch sources for golden **1.40MSCN6** on OS 1.40C (splash `1.40MSCN6`).
 
 ```bash
 python tools/build_midisc40.py
@@ -18,4 +18,3 @@ Needs your own 1.40C. See root README + `docs/TECH.md` + `docs/FLASHING.md`.
 | `emit.py` | shared helpers |
 | `build.py` | link, patch sites, repack |
 | `HANDOFF.md` | short shipped map |
-
