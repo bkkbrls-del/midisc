@@ -12,31 +12,26 @@ clr_pt:
         move.l %d2,-(%sp)
         move.l %a0,-(%sp)
         move.l %a1,-(%sp)
-        move.l (24,%sp),%d0
-        andi.l #0xf,%d0
-        move.l %d0,%d2
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
+        move.l (24,%sp),%d3
+        andi.l #0xf,%d3
+        move.l %d3,%d2
+        jsr (part_window).l
+        .byte 0x2f, 0x01
         adda.l #0x90522,%a0
         bsr.w .Lclr_pt_z144
+        .byte 0x22, 0x1f
         movea.l #0x100a4ece,%a0
         adda.l %d1,%a0
         adda.l #0x17a2,%a0
         bsr.w .Lclr_pt_z144
         move.l %d2,%d0
-        move.l #0x90,%d1
-        muls.l %d0,%d1
-        movea.l #0x460c9c00,%a0
-        adda.l %d1,%a0
-        bsr.w .Lclr_pt_z144
-        move.l %d2,%d0
+        andi.l #0xff,%d0
         mvz.b (last_part).l,%d1
-        andi.l #0xf,%d1
+        andi.l #0xff,%d1
         .byte 0xb0, 0x81
         beq.w .Lclr_pt_wipe
         mvz.b (0x100b14cf).l,%d1
+        andi.l #0xff,%d1
         .byte 0xb0, 0x81
         bne.w .Lclr_pt_skip
 .Lclr_pt_wipe:
@@ -73,6 +68,13 @@ after_proj:
         move.l %a0,-(%sp)
         move.l %a1,-(%sp)
         .byte 0x2f, 0x0a
+        movea.l #0x460db000,%a0
+        moveq #15,%d1
+.Lafter_proj_zmk:
+        .byte 0x42, 0x90
+        adda.l #0x4,%a0
+        .byte 0x53, 0x81
+        bpl.w .Lafter_proj_zmk
         movea.l #0x40020898,%a2
         moveq #0,%d3
 .Lafter_proj_lp:

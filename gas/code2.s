@@ -32,37 +32,6 @@ reload:
         .byte 0x2e, 0x80
         jmp (0x4004aab4).l
 
-        .global bank_sw
-bank_sw:
-        .byte 0x4f, 0xef, 0xff, 0xc4
-        .byte 0x48, 0xd7, 0x7f, 0xfe
-        .byte 0x2f, 0x00
-        jsr (pack).l
-        .byte 0x20, 0x1f
-        move.l %d0,(0x46c82456).l
-        jsr (unpack).l
-        .byte 0x4c, 0xd7, 0x7f, 0xfe
-        .byte 0x4f, 0xef, 0x00, 0x3c
-        rts
-
-        .global bank_inv
-bank_inv:
-        .byte 0x4f, 0xef, 0xff, 0xc4
-        .byte 0x48, 0xd7, 0x7f, 0xfe
-        move.l %d0,(0x46c82456).l
-        moveq #-1,%d1
-        move.b %d1,(last_part).l
-        movea.l #0x460c9c00,%a0
-        moveq #3,%d2
-.Lbank_inv_zck:
-        .byte 0x42, 0x50
-        adda.l #0x90,%a0
-        .byte 0x53, 0x82
-        bpl.w .Lbank_inv_zck
-        .byte 0x4c, 0xd7, 0x7f, 0xfe
-        .byte 0x4f, 0xef, 0x00, 0x3c
-        rts
-
         .global scene_done
 scene_done:
         mvz.b (last_part).l,%d0
@@ -71,9 +40,9 @@ scene_done:
         beq.w .Lscene_done_ok
         jsr (unpack).l
 .Lscene_done_ok:
-        .byte 0x42, 0xb9, 0x46, 0x0c, 0x9e, 0x44
+        .byte 0x42, 0xb9, 0x46, 0x0c, 0xa5, 0x04
         moveq #-1,%d0
-        move.b %d0,(0x460c9eb9).l
+        move.b %d0,(0x460ca579).l
         jsr (xf_mix).l
         jmp (0x4007e8d8).l
 
@@ -83,3 +52,32 @@ write_mix:
         jsr (xf_mix).l
         jsr (voice_rel).l
         jmp (0x40055392).l
+
+        .global cc_gate
+cc_gate:
+        cmpi.l #0x30,%d3
+        beq.w .Lcc_gate_c48
+        cmpi.l #0x37,%d3
+        beq.w .Lcc_gate_c55
+        cmpi.l #0x38,%d3
+        beq.w .Lcc_gate_c56
+.Lcc_gate_pass:
+        moveq #8,%d0
+        .byte 0xb0, 0x81
+        beq.w .Lcc_gate_eq8
+        jmp (0x40033ea4).l
+.Lcc_gate_eq8:
+        jmp (0x40033e60).l
+.Lcc_gate_c48:
+        tst.l (0x460ca680).l
+        beq.w .Lcc_gate_pass
+        bra.w .Lcc_gate_block
+.Lcc_gate_c55:
+        tst.l (0x460ca684).l
+        beq.w .Lcc_gate_pass
+        bra.w .Lcc_gate_block
+.Lcc_gate_c56:
+        tst.l (0x460ca688).l
+        beq.w .Lcc_gate_pass
+.Lcc_gate_block:
+        jmp (0x40033f24).l

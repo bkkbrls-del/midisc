@@ -7,103 +7,105 @@
 
         .global rebuild
 rebuild:
-        .byte 0x2f, 0x07
-        .byte 0x2f, 0x09
-        moveq #0,%d6
-        movea.l (0x46c82456).l,%a0
-        move.l %a0,%d0
-        tst.l %d0
-        beq.w .Lrebuild_abort
-        movea.l #0x460c9e49,%a0
-        moveq #8,%d1
-.Lrebuild_zt:
-        .byte 0x42, 0x10
-        .byte 0x52, 0x88
-        .byte 0x53, 0x81
-        bne.w .Lrebuild_zt
+        move.l (0x460d16c8).l,%d5
+        andi.l #0x7f,%d5
+        .short 0x203c
+        .long 0x7f        | move.l #127,%d0 (long form kept)
+        sub.l %d5,%d0
+        move.l %d0,%d5
+        tst.l %d5
+        beq.w .Lrebuild_pure
+        cmpi.l #0x7f,%d5
+        bne.w .Lrebuild_out
+.Lrebuild_pure:
         mvz.b (0x100b14cf).l,%d0
         andi.l #0xf,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
+        move.l #0x18b2,%d6
+        muls.l %d0,%d6
         movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
+        adda.l %d6,%a0
         adda.l #0x8ed90,%a0
         mvz.b (%a0),%d3
-        mvz.b (1,%a0),%d5
-        moveq #0,%d4
-.Lrebuild_tr:
-        movea.l #0x460c9e51,%a0
-        adda.l %d4,%a0
-        move.b %d6,(%a0)
-        moveq #0,%d1
-.Lrebuild_fl:
-        moveq #-1,%d0
+        mvz.b (1,%a0),%d4
+        tst.l %d5
+        beq.w .Lrebuild_use_a
+        move.l %d4,%d3
+.Lrebuild_use_a:
         cmpi.l #0xff,%d3
-        beq.w .Lrebuild_va_d
-        move.l %d3,%d2
-        andi.l #0xf,%d2
-        lsl.l #8,%d2
-        movea.l #msc,%a0
-        adda.l %d2,%a0
-        move.l %d4,%d2
-        lsl.l #5,%d2
-        adda.l %d2,%a0
+        beq.w .Lrebuild_out
+        andi.l #0xf,%d3
+        lsl.l #8,%d3
+        movea.l #msc,%a2
+        adda.l %d3,%a2
+        move.l %d7,%d3
+        lsl.l #5,%d3
+        adda.l %d3,%a2
+        moveq #0,%d1
+.Lrebuild_lp:
+        .byte 0x20, 0x4a
         adda.l %d1,%a0
-        mvz.b (%a0),%d0
-.Lrebuild_va_d:
-        moveq #-1,%d2
+        mvz.b (%a0),%d5
         cmpi.l #0xff,%d5
-        beq.w .Lrebuild_vb_d
-        move.l %d5,%d7
-        andi.l #0xf,%d7
-        lsl.l #8,%d7
-        movea.l #msc,%a0
-        adda.l %d7,%a0
-        move.l %d4,%d7
-        lsl.l #5,%d7
-        adda.l %d7,%a0
+        beq.w .Lrebuild_nx
+        move.l %d7,%d0
+        lsl.l #6,%d0
+        move.l %d7,%d4
+        lsl.l #2,%d4
+        add.l %d4,%d0
+        add.l %d1,%d0
+        movea.l #0x46c76dc0,%a0
+        adda.l %d0,%a0
+        mvz.b (%a0),%d0
+        .byte 0x20, 0x49
         adda.l %d1,%a0
-        mvz.b (%a0),%d2
-.Lrebuild_vb_d:
-        cmpi.l #0xff,%d0
-        bne.w .Lrebuild_keep
-        cmpi.l #0xff,%d2
-        beq.w .Lrebuild_nxf
-.Lrebuild_keep:
-        cmpi.l #0x20,%d6
-        bcc.w .Lrebuild_fin
-        move.l %d4,%d7
-        lsl.l #5,%d7
-        or.l %d1,%d7
-        .byte 0x2f, 0x02
-        movea.l #0x460c9e59,%a0
-        move.l %d6,%d2
-        add.l %d2,%d2
-        add.l %d6,%d2
-        adda.l %d2,%a0
-        .byte 0x10, 0xc7
-        .byte 0x10, 0xc0
-        .byte 0x24, 0x1f
-        .byte 0x10, 0xc2
-        addq.l #1,%d6
-        movea.l #0x460c9e49,%a0
-        adda.l %d4,%a0
-        .byte 0x52, 0x10
-.Lrebuild_nxf:
+        move.b %d0,(%a0)
+.Lrebuild_nx:
         addq.l #1,%d1
         cmpi.l #0x1e,%d1
-        bcs.w .Lrebuild_fl
-        addq.l #1,%d4
-        cmpi.l #0x8,%d4
-        bcs.w .Lrebuild_tr
-.Lrebuild_fin:
-        move.b %d6,(0x460c9e48).l
-        move.l #0x4d53434c,%d0
-        move.l %d0,(0x460c9e44).l
-        .byte 0x22, 0x5f
-        .byte 0x2e, 0x1f
+        bcs.w .Lrebuild_lp
+.Lrebuild_out:
         rts
-.Lrebuild_abort:
-        .byte 0x22, 0x5f
-        .byte 0x2e, 0x1f
+
+        .global freeze_alt
+freeze_alt:
+        move.l %d0,-(%sp)
+        move.l %d1,-(%sp)
+        move.l %a0,-(%sp)
+        move.l %a1,-(%sp)
+        move.l %d3,%d0
+        andi.l #0xf,%d0
+        jsr (part_window).l
+        .byte 0x22, 0x48
+        adda.l #0x90492,%a0
+        .byte 0x30, 0x10
+        cmpi.l #0x4d53,%d0
+        bne.w .Lfreeze_alt_try_sh
+        adda.l #0x90522,%a1
+        move.l #0x90,%d1
+.Lfreeze_alt_cp_w:
+        .byte 0x10, 0x18
+        .byte 0x12, 0xc0
+        .byte 0x53, 0x81
+        bne.w .Lfreeze_alt_cp_w
+        bra.w .Lfreeze_alt_done
+.Lfreeze_alt_try_sh:
+        move.l %d3,%d0
+        jsr (part_window).l
+        .byte 0x22, 0x48
+        adda.l #0x9675c,%a0
+        .byte 0x30, 0x10
+        cmpi.l #0x4d53,%d0
+        bne.w .Lfreeze_alt_done
+        adda.l #0x90522,%a1
+        move.l #0x90,%d1
+.Lfreeze_alt_cp_s:
+        .byte 0x10, 0x18
+        .byte 0x12, 0xc0
+        .byte 0x53, 0x81
+        bne.w .Lfreeze_alt_cp_s
+.Lfreeze_alt_done:
+        move.l (%sp)+,%a1
+        move.l (%sp)+,%a0
+        move.l (%sp)+,%d1
+        move.l (%sp)+,%d0
         rts
