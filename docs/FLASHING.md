@@ -1,4 +1,4 @@
-# Flashing a build of `1.40MSCN6`
+# Flashing a build of `1.40MIDISCc`
 
 This project does **not** ship a `.bin`. Build first:
 
@@ -6,15 +6,15 @@ This project does **not** ship a `.bin`. Build first:
 python tools/build_midisc40.py
 ```
 
-Output: `~/Desktop/1.40MSCN6.bin` (splash `1.40MSCN6`) and
-`out/OCTATRACK_1.40MSCN6.syx`.
+Output: `~/Desktop/1.40MIDISCc.bin` (splash `1.40MDISCc`) and
+`out/OCTATRACK_1.40MIDISCc.syx`.
 
 ## Install
 
 1. Back up projects.
-2. Copy **that build's** `1.40MSCN6.bin` to the CompactFlash **root**.
+2. Copy **that build's** `1.40MIDISCc.bin` to the CompactFlash **root**.
 3. On the unit: **OS UPGRADE** (same as an official update).
-4. Confirm version **`1.40MSCN6`**.
+4. Confirm version **`1.40MDISCc`**.
 
 ## Recovery
 

@@ -29,6 +29,13 @@ LOCK_MAGIC_VAL = 0x4D53434C  # 'MSCL' — must not false-match DRAM junk
 LOCK_LAST_XF = LOCK_ENTS + LOCK_ENTS_MAX * LOCK_ENT_SIZE  # u8; 0xFF = force remix
 TRIG_SNAP = (LOCK_LAST_XF + 7) & ~3  # u8[8][32] raw trig layer for XF empty side
 TRIG_SNAP_STRIDE = 32
+# MIDI CONTROL CC enable flags (u32 0=ON/allow TX, 1=OFF/block). After TRIG_SNAP.
+# Never 0x800000A8/D4/D8 (live stock — bricks). DRAM boots 0 → CCs ON / checked.
+FILT_CC48 = TRIG_SNAP + 8 * TRIG_SNAP_STRIDE  # XF CC48
+FILT_CC55 = FILT_CC48 + 4  # scene A CC55
+FILT_CC56 = FILT_CC55 + 4  # scene B CC56
+# Octakit: nonzero ⇒ bank_switch/invalidate skip part-set coupling (kits own it).
+KITS_GATE = FILT_CC56 + 4  # u8; boots 0 = stock bank↔part behaviour
 
 SPARSE_OFF = 0x90522
 # SAVE shadow window @ bank+part*18b2+0x9504A; sparse at +0x17A2 inside it
@@ -62,6 +69,7 @@ SENT_DIRTY = 0x400D7F08
 SENT_REBUILD_MASK = 0x400D7F10
 SENT_CLAMP = 0x400D7F14  # scene-lock clamp (ARP LEG/MODE/SPD/RNG)
 SENT_VOICE_RELOAD = 0x400D7F18  # write_remixed: d2 <- MIDI_VOICE
+SENT_PART_WINDOW = 0x400D7F1C  # Octakit seam: part/kit index → window base
 # SENT_XF_MIX defined with morph constants above
 
 BANK_PTR = 0x46C82456
@@ -205,11 +213,13 @@ ENC_PRESS_STOCK = "4ab9800000126600"  # tst.l MIDI; bne.w (hi 2 of offset vary)
 ENC_UNLOCK_CAVE = 0x400C45B0  # stock zero island (~338B)
 ENC_UNLOCK_CAVE_END = 0x400C4700
 
-# Safe ROM zero gap (NOT 0x4010CDD1 — that is DSP payload and bricks).
-# Leave headroom before the only abs xref at 0x400D2CDC.
-# UNSAFE: stock ptr table @ 400ba8fa -> 400c4302 / 400c4702. Never place code here.
+# UNSAFE for Part-Clear: stock ptr table @400ba8fa → here. Filter UI may use it.
 CLEAR_CAVE = 0x400C4302
 CLEAR_CAVE_END = 0x400C444C
+
+# Former Bam bank_pub island — Octakit seam routines (part_window).
+SEAM_CAVE = 0x400D46E2
+SEAM_CAVE_END = 0x400D47AD
 PROJECT_CAVE = 0x400E1EC4  # Part Clear (hooks off; cmpa bound only)
 PROJECT_CAVE_END = 0x400E2000
 SAFE_CAVE = 0x400D24D0
@@ -224,8 +234,8 @@ CAVE2_END = 0x400D3020
 STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
 SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
 OUT = ROOT / "out" / "mainos_midisc40.bin"
-VER = "1.40MSCN6"  # splash <=10
-DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MSCN6.bin"
+VER = "1.40MDISCc"  # splash <=10; desktop 1.40MIDISCc.bin
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISCc.bin"
 
 # Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
 RELEASE_HOOK = 0x40054CB6

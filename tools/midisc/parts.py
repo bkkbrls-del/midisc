@@ -4,6 +4,31 @@ from __future__ import annotations
 from ot3_asm import Asm
 
 from .memory_map import *  # noqa: F403
+
+
+def build_part_window() -> bytes:
+    """Octakit seam: part/kit index → part-window base in the active store.
+
+    IN:  d3 = part or kit index (any width)
+    OUT: d3 = index & 0xFF (kits 0..255; stock banks still use low nibble)
+         d1 = index * 0x18B2
+         a0 = *BANK_PTR + d1
+    Clobber: d0
+
+    Lock store (144B sparse) = a0 + SPARSE_OFF. Octakit overrides this routine
+    to use her kit payload base instead of BANK_PTR; offsets stay identical.
+    """
+    a = Asm()
+    a.andi(0xFF, 3)
+    a.move_l_dd(3, 0)
+    a.move_l_imm(0x18B2, 1)
+    a.muls(0, 1)
+    a.movea_abs(BANK_PTR, 0)
+    a.adda_d(1, 0)
+    a.rts()
+    return a.link()
+
+
 def build_pack() -> bytes:
     """MSC -> working sparse, then durable like stock Part Save + Reload.
 
@@ -19,14 +44,9 @@ def build_pack() -> bytes:
     a.beq("skip")
     a.push("d0", "d1", "d2", "d3", "d4", "d5", "a0", "a1")
     a.hex("2f0a2f0b")  # push a2, a3
-    a.andi(0xF, 3)
+    a.jsr(SENT_PART_WINDOW)  # a0=window, d1=stride, d3=idx&0xFF
     a.move_l_dd(3, 4)  # d4 = part
-    a.move_l_dd(3, 0)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
     a.move_l_dd(1, 5)  # d5 = part*0x18b2
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
     a.adda_imm(SPARSE_OFF, 0)
     a.hex("2248")  # a1 = working sparse
     a.hex("2f09")  # push sparse base (count must land at header+2)
@@ -56,7 +76,6 @@ def build_pack() -> bytes:
     a.hex("13430002")  # count @ header+2
 
     # Full STOCK_SAVE durable half (working→shadow→staging + 9b312).
-    # Sparse-only dual-write was not enough on HW; Part Save does this.
     a.movea_abs(BANK_PTR, 0)
     a.hex("2008")  # d0 = bank
     a.add_dd(5, 0)  # bank+part*18b2
@@ -77,7 +96,6 @@ def build_pack() -> bytes:
     a.hex("2f00")  # dst staging
     a.hex("4e93")
     a.hex("4fef000c")
-    # Stock Reload second half: shadow -> PART_PROJECT (Project Save CF source)
     a.hex("487818b2")
     a.hex("2f02")  # src shadow
     a.move_l_imm(PART_PROJECT, 0)
@@ -127,16 +145,11 @@ def build_unpack() -> bytes:
     a.bne("got")
     a.mvz_b_abs(PART_DISP, 3)
     a.label("got")
-    a.andi(0xF, 3)
     a.moveq(0xFF, 0)
     a.move_b_d_abs(0, UNPACK_SRC)
     a.label("try")
-    a.move_l_dd(3, 0)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
-    a.adda_d(2, 0)
+    a.jsr(SENT_PART_WINDOW)  # a0=window, d1=stride, d3&=0xFF
+    a.adda_d(2, 0)  # + working or shadow sparse off
     a.hex("2248")
     a.hex("3011")
     a.cmpi(SPARSE_MAGIC, 0)
@@ -162,11 +175,7 @@ def build_unpack() -> bytes:
     a.label("maybe_sync")
     a.tst_d(4)
     a.beq("hit")
-    a.move_l_dd(3, 0)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
+    a.jsr(SENT_PART_WINDOW)
     a.hex("2248")
     a.adda_imm(SHADOW_SPARSE_OFF, 0)
     a.adda_imm(SPARSE_OFF, 1)
@@ -198,7 +207,7 @@ def build_reload_after() -> bytes:
     a.push("d1", "d2", "d3", "a0", "a1")
     # 1*4 + 5*4 = 24; part was @4 -> @0x18
     a.move_l_sp(0x18, 3)
-    a.andi(0xF, 3)
+    a.andi(0xF, 3)  # CKPT has 4 part slots
     a.move_l_dd(3, 0)
     a.move_l_imm(SPARSE_BYTES, 1)
     a.muls(0, 1)
@@ -208,11 +217,7 @@ def build_reload_after() -> bytes:
     a.cmpi(SPARSE_MAGIC, 0)
     a.bne("use_shadow")
     a.hex("2f08")  # push a0 (CKPT src)
-    a.move_l_dd(3, 0)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
+    a.jsr(SENT_PART_WINDOW)
     a.adda_imm(SPARSE_OFF, 0)
     a.hex("2248")  # a1 = working dest
     a.hex("205f")  # pop a0 = CKPT src
@@ -243,18 +248,25 @@ def build_reload_after() -> bytes:
 def build_bank_switch() -> bytes:
     """d0=new BANK_PTR. Pack, publish, unpack. Site A only (0x400622aa).
 
-    Guarded path: BANK_ID still old; pack while old bank is current, then
-    publish. Part1 after-faf0 unpack is build_after_project_load. Preserve
-    d1-d7/a0-a6 (sample load).
+    When KITS_GATE!=0, skip pack/unpack — Octakit owns the part/kit set;
+    bank change must not assume parts moved. Still publishes BANK_PTR.
     """
     a = Asm()
     a.hex("4fefffc4")  # lea -0x3c(sp),sp  ; 15 regs
     a.hex("48d77ffe")  # movem.l d1-d7/a0-a6,(sp)
     a.hex("2f00")  # push d0
+    a.mvz_b_abs(KITS_GATE, 1)
+    a.tst_d(1)
+    a.bne("kits")
     a.jsr(SENT_PACK)
     a.hex("201f")  # pop d0
     a.move_l_d_abs(0, BANK_PTR)
     a.jsr(SENT_UNPACK)
+    a.bra("done")
+    a.label("kits")
+    a.hex("201f")  # pop d0
+    a.move_l_d_abs(0, BANK_PTR)
+    a.label("done")
     a.hex("4cd77ffe")  # movem.l (sp),d1-d7/a0-a6
     a.hex("4fef003c")  # lea 0x3c(sp),sp
     a.rts()
@@ -322,11 +334,18 @@ def build_after_project_load(cont: int = 0x400418E0) -> bytes:
 
 
 def build_bank_invalidate() -> bytes:
-    """d0=new BANK_PTR. Publish, clear CKPTs. Preserve d1-d7/a0-a6 (sample load)."""
+    """d0=new BANK_PTR. Publish, clear CKPTs. Preserve d1-d7/a0-a6 (sample load).
+
+    When KITS_GATE!=0, only publish BANK_PTR — do not clear LAST_PART/CKPT
+    (kits are not tied to bank change).
+    """
     a = Asm()
     a.hex("4fefffc4")  # lea -0x3c(sp),sp
     a.hex("48d77ffe")  # movem.l d1-d7/a0-a6,(sp)
     a.move_l_d_abs(0, BANK_PTR)
+    a.mvz_b_abs(KITS_GATE, 1)
+    a.tst_d(1)
+    a.bne("done")
     a.moveq(0xFF, 1)
     a.move_b_d_abs(1, LAST_PART)
     # wipe CKPT magics so Reload won't restore DRAM garbage after bank load
@@ -337,6 +356,7 @@ def build_bank_invalidate() -> bytes:
     a.adda_imm(SPARSE_BYTES, 0)
     a.hex("5382")  # subq.l #1, d2
     a.bpl("zck")
+    a.label("done")
     a.hex("4cd77ffe")  # movem.l (sp),d1-d7/a0-a6
     a.hex("4fef003c")  # lea 0x3c(sp),sp
     a.rts()
@@ -407,16 +427,11 @@ def build_save_ui() -> bytes:
     a = Asm()
     a.push("d0", "d1", "d2", "a0", "a1")
     # 5*4=20 + ret@20; part was @4 -> @0x18
-    a.move_l_sp(0x18, 0)
-    a.andi(0xF, 0)
-    a.move_l_dd(0, 2)  # d2 = part
+    a.move_l_sp(0x18, 3)
+    a.move_l_dd(3, 2)  # d2 = part (accessor masks)
 
     # salvage: working sparse invalid but shadow has MS -> copy 144B
-    a.move_l_dd(2, 0)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
+    a.jsr(SENT_PART_WINDOW)  # a0=window
     a.hex("2248")  # a1 = part base
     a.adda_imm(SPARSE_OFF, 0)
     a.hex("3010")
@@ -443,16 +458,14 @@ def build_save_ui() -> bytes:
     a.move_b_d_abs(0, LAST_PART)
     a.jsr(SENT_PACK)
 
-    # working sparse -> CKPT[part] (Part Reload freeze)
+    # working sparse -> CKPT[part] (Part Reload freeze; stock 4 parts)
     a.label("ckpt")
-    a.move_l_dd(2, 0)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
+    a.move_l_dd(2, 3)
+    a.jsr(SENT_PART_WINDOW)
     a.adda_imm(SPARSE_OFF, 0)
     a.hex("2248")  # a1 = working sparse
     a.move_l_dd(2, 0)
+    a.andi(0xF, 0)  # CKPT only has 4 part slots
     a.move_l_imm(SPARSE_BYTES, 1)
     a.muls(0, 1)
     a.movea_imm(CKPT, 0)
@@ -491,22 +504,21 @@ def build_clear_part() -> bytes:
     """
     a = Asm()
     a.push("d0", "d1", "d2", "a0", "a1")
-    a.move_l_sp(0x18, 0)
-    a.andi(0xF, 0)
-    a.move_l_dd(0, 2)
-    a.move_l_imm(0x18B2, 1)
-    a.muls(0, 1)
-    a.movea_abs(BANK_PTR, 0)
-    a.adda_d(1, 0)
+    a.move_l_sp(0x18, 3)
+    a.move_l_dd(3, 2)
+    a.jsr(SENT_PART_WINDOW)  # a0=window, d1=stride
+    a.hex("2f01")  # push stride
     a.adda_imm(SPARSE_OFF, 0)
     a._fix.append((len(a.b), "z144"))
     a.hex("61000000")
+    a.hex("221f")  # pop stride → d1
     a.movea_imm(PART_PROJECT, 0)
     a.adda_d(1, 0)
     a.adda_imm(0x17A2, 0)
     a._fix.append((len(a.b), "z144"))
     a.hex("61000000")
     a.move_l_dd(2, 0)
+    a.andi(0xF, 0)  # CKPT: 4 stock parts
     a.move_l_imm(SPARSE_BYTES, 1)
     a.muls(0, 1)
     a.movea_imm(CKPT, 0)
@@ -514,11 +526,13 @@ def build_clear_part() -> bytes:
     a._fix.append((len(a.b), "z144"))
     a.hex("61000000")
     a.move_l_dd(2, 0)
+    a.andi(0xFF, 0)
     a.mvz_b_abs(LAST_PART, 1)
-    a.andi(0xF, 1)
+    a.andi(0xFF, 1)
     a.hex("b081")
     a.beq("wipe")
     a.mvz_b_abs(PART_DISP, 1)
+    a.andi(0xFF, 1)
     a.hex("b081")
     a.bne("skip")
     a.label("wipe")
