@@ -10,7 +10,7 @@ from .util import ensure_stock, fix_jsr, jmp_abs, jsr_abs, off
 from .parts import (
     build_after_apply, build_apply_wrap, build_bank_invalidate,
     build_after_project_load, build_bank_publish, build_bank_switch, build_clear_part, build_dirty, build_pack,
-    build_reload_after, build_reload_ui, build_save_ui, build_unpack,
+    build_part_window, build_reload_after, build_reload_ui, build_save_ui, build_unpack,
 )
 from .hold import (
     build_addi_d0, build_addi_d1, build_dial, build_enc_press_hook,
@@ -24,6 +24,18 @@ from .scene_ui import (
 from .morph import (
     build_morph, build_plock_morph_body, build_scene_after_plock,
     build_scene_applied, build_voice_reload_d2, build_write_remixed, build_xf_after, build_xf_mix_out,
+)
+from .midi_filter import (
+    CC_TX_HOOK,
+    DRAW_SCROLL_HOOK,
+    FILTER_CAVE,
+    FILTER_CAVE_END,
+    LIST_INIT_COUNT_PEA,
+    SCROLL_CAVE,
+    SCROLL_CAVE_END,
+    SETTER_LEA_SITES,
+    apply_midi_ctrl_filter,
+    build_cc_tx_gate,
 )
 
 def main() -> None:
@@ -87,13 +99,41 @@ def main() -> None:
     # Clear unused FF pad D7C3C..D7C4F (vector table starts D7C50)
     img[off(0x400D7C3C) : off(0x400D7C50)] = bytes(0x400D7C50 - 0x400D7C3C)
 
-    pack_b = build_pack()
-    unpack_b = build_unpack()
+    pack_b = bytearray(build_pack())
+    unpack_b = bytearray(build_unpack())
     dirty_b = build_dirty()
-    clear_pt_b = build_clear_part()
-    save_b = build_save_ui()
-    reload_after_b = build_reload_after()
+    clear_pt_b = bytearray(build_clear_part())
+    save_b = bytearray(build_save_ui())
+    reload_after_b = bytearray(build_reload_after())
     xf_mix_b = build_xf_mix_out()
+    part_win_b = build_part_window()
+    bank_sw_b = build_bank_switch()
+    bank_inv_b = build_bank_invalidate()
+    seam = bytearray(part_win_b)
+    abs_part_win = SEAM_CAVE
+    abs_bank_sw = SEAM_CAVE + len(seam)
+    seam += bank_sw_b
+    abs_bank_inv = SEAM_CAVE + len(seam)
+    seam += bank_inv_b
+    if any(img[off(SEAM_CAVE) : off(SEAM_CAVE_END)]):
+        sys.exit("SEAM_CAVE not empty")
+    if SEAM_CAVE + len(seam) > SEAM_CAVE_END:
+        sys.exit(f"SEAM_CAVE overrun {len(seam)}")
+    print(
+        f"SEAM_CAVE {len(seam)} @ {SEAM_CAVE:#x} "
+        f"part_window={abs_part_win:#x} bank_sw={abs_bank_sw:#x} bank_inv={abs_bank_inv:#x}"
+    )
+
+    for name, blob, need in (
+        ("pack", pack_b, 1),
+        ("unpack", unpack_b, 2),  # try + maybe_sync
+        ("save", save_b, 2),
+        ("reload_after", reload_after_b, 1),
+        ("clear_part", clear_pt_b, 1),
+    ):
+        n = fix_jsr(blob, SENT_PART_WINDOW, abs_part_win)
+        if n < need:
+            sys.exit(f"{name} PART_WINDOW sentinels {n} (need >={need})")
 
     # PROJECT_CAVE: clear_part + after_project_load (NOT xf2 — that hangs boot).
     if any(img[off(PROJECT_CAVE) : off(PROJECT_CAVE_END)]):
@@ -160,10 +200,8 @@ def main() -> None:
     abs_voice_rel = VOICE_RELOAD_CAVE
     print(f"VOICE_RELOAD {len(voice_rel_b)} @ {abs_voice_rel:#x}")
 
-    # CODE2: apply/reload-ui/bank + scene-done/write remix
+    # CODE2: apply/reload-ui + scene-done/write remix (bank_* live in SEAM)
     after_b = build_after_apply()
-    bank_sw_b = build_bank_switch()
-    bank_inv_b = build_bank_invalidate()
     c2 = bytearray()
     abs_after = CODE2 + len(c2)
     c2 += after_b
@@ -171,22 +209,19 @@ def main() -> None:
     c2 += build_apply_wrap(abs_after)
     abs_reload = CODE2 + len(c2)
     c2 += build_reload_ui(abs_reload_after)
-    abs_bank_sw = CODE2 + len(c2)
-    c2 += bank_sw_b
-    abs_bank_inv = CODE2 + len(c2)
-    c2 += bank_inv_b
     abs_scene_done = CODE2 + len(c2)
     c2 += build_scene_applied()
     abs_write_mix = CODE2 + len(c2)
     c2 += build_write_remixed()
+    abs_cc_gate = CODE2 + len(c2)
+    c2 += build_cc_tx_gate()
 
     if len(c2) > CODE2_END - CODE2:
         sys.exit(f"CODE2 overrun {len(c2)}")
 
     print(f"CODE2 {len(c2)} free {CODE2_END - CODE2 - len(c2)}")
     print(f"  after={abs_after:#x} apply={abs_apply:#x} reload={abs_reload:#x}")
-    print(f"  bank_sw={abs_bank_sw:#x} bank_inv={abs_bank_inv:#x}")
-    print(f"  scene_done={abs_scene_done:#x} write_mix={abs_write_mix:#x}")
+    print(f"  scene_done={abs_scene_done:#x} write_mix={abs_write_mix:#x} cc_gate={abs_cc_gate:#x}")
 
     core = {
         "xf1": build_xf_after(XF_AFTER1_CONT, XF_AFTER1_STOCK),
@@ -257,6 +292,11 @@ def main() -> None:
     if n2 < 2:
         sys.exit(f"CODE2 sentinel miss ({n2})")
 
+    n_seam = fix_jsr(seam, SENT_PACK, addrs["pack"])
+    n_seam += fix_jsr(seam, SENT_UNPACK, addrs["unpack"])
+    if n_seam < 2:
+        sys.exit(f"SEAM bank_* pack/unpack sentinels {n_seam}")
+
     # pack/unpack/morph/xf live in SAFE_CAVE
     fix_jsr(sc, SENT_PACK, addrs["pack"])
     n_sc_unp = fix_jsr(sc, SENT_UNPACK, addrs["unpack"])
@@ -274,6 +314,7 @@ def main() -> None:
     # morph lives in SAFE_CAVE (rate-matched XF remix)
 
     img[off(SAFE_CAVE) : off(SAFE_CAVE) + len(sc)] = bytes(sc)
+    img[off(SEAM_CAVE) : off(SEAM_CAVE) + len(seam)] = bytes(seam)
     img[off(PROJECT_CAVE) : off(PROJECT_CAVE) + len(clear_pt_b)] = bytes(clear_pt_b)
     img[off(abs_after_proj) : off(abs_after_proj) + len(after_proj_b)] = bytes(after_proj_b)
     img[off(VOICE_RELOAD_CAVE) : off(VOICE_RELOAD_CAVE) + len(voice_rel_b)] = bytes(voice_rel_b)
@@ -360,6 +401,8 @@ def main() -> None:
     img[off(BANK_WR_INIT_B) : off(BANK_WR_INIT_B) + 6] = jsr_abs(abs_bank_inv)
     img[off(AFTER_PROJECT_LOAD) : off(AFTER_PROJECT_LOAD) + 6] = jsr_abs(abs_after_proj)
 
+    apply_midi_ctrl_filter(img, abs_cc_gate)
+
     save_all_lea = bytes.fromhex("45f94004a908")
     if bytes(img[off(SAVE_ALL) + 4 : off(SAVE_ALL) + 10]) != save_all_lea:
         sys.exit(f"SAVE_ALL lea mismatch: {bytes(img[off(SAVE_ALL)+4:off(SAVE_ALL)+10]).hex()}")
@@ -373,6 +416,15 @@ def main() -> None:
         (off(PROJECT_CAVE), off(PROJECT_CAVE) + len(clear_pt_b) + len(after_proj_b)),
         (off(VOICE_RELOAD_CAVE), off(VOICE_RELOAD_CAVE) + len(voice_rel_b)),
         (off(CAVE2), off(CAVE2) + len(c2b)),
+        (off(SEAM_CAVE), off(SEAM_CAVE) + len(seam)),
+        (off(FILTER_CAVE), off(FILTER_CAVE_END)),
+        (off(SCROLL_CAVE), off(SCROLL_CAVE_END)),
+        (off(CC_TX_HOOK), off(CC_TX_HOOK) + 6),
+        (off(DRAW_SCROLL_HOOK), off(DRAW_SCROLL_HOOK) + 6),
+        (off(0x40068392), off(0x40068392) + 4),
+        (off(0x4006839E), off(0x4006839E) + 4),
+        (off(LIST_INIT_COUNT_PEA), off(LIST_INIT_COUNT_PEA) + 4),
+        *[(off(s + 2), off(s + 2) + 4) for s in SETTER_LEA_SITES],
         (off(0x400D7C3C), off(0x400D7C50)),
         (off(LAST_PART), off(APPLY_RET) + 4),
         (off(GATE_A), off(GATE_A) + GATE_A_LEN),
@@ -487,6 +539,7 @@ def main() -> None:
         (STUB, len(blob)),
         (CODE2, len(c2)),
         (SAFE_CAVE, len(sc)),
+        (SEAM_CAVE, len(seam)),
         (PROJECT_CAVE, len(clear_pt_b) + len(after_proj_b)),
         (VOICE_RELOAD_CAVE, len(voice_rel_b)),
         (CAVE2, len(c2b)),

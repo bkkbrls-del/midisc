@@ -1,9 +1,9 @@
-# midisc technical map (`1.40MSCN6`)
+# midisc technical map (`1.40MIDISCc`)
 
 Facts the shipped patch relies on. Base image: stock **1.40C** MAIN OS
 (`BASE = 0x40000400`). All addresses in `tools/midisc/memory_map.py`.
 
-Splash field is <=10 chars: **`1.40MSCN6`**. Flash filename: **`1.40MSCN6.bin`**.
+Splash field is <=10 chars: **`1.40MDISCc`**. Flash filename: **`1.40MIDISCc.bin`**.
 
 ---
 
@@ -216,29 +216,52 @@ with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
 
 ---
 
+## MIDI CONTROL — CC48 / CC55 / CC56 (working)
+
+MIDI → **CONTROL** adds three rows after AUDIO NOTE OUT (`tools/midisc/midi_filter.py`).
+
+| UI | Meaning |
+|----|---------|
+| Checked (default) | that CC is **ON** (TX allowed) |
+| Unchecked | that CC is **OFF** (TX blocked) |
+
+Still gated by stock AUDIO CC OUT. Setters use PERSONALIZE ABI
+`(flag + delta) & 1` (YES passes delta +1 on `4(sp)`).
+
+| | |
+|--|--|
+| Flags | DRAM after `TRIG_SNAP` (`FILT_CC48/55/56`) — never `0x800000xx` |
+| Gate | `FUN_40033e3c` @ `0x40033E5A` — enter with **jmp** only (jsr bricks LFO) |
+| Scroll | draw hook `0x4006838A` → `SCROLL_CAVE` (peas alone do not scroll) |
+
+---
+
 ## Compose with Octakit
 
 Checked against sambanks/octabam modules (`midi-scenes`, `octakit`, `scenes-kits`)
-and emuyia/ems-octakit (pinned ca3b527). MIDI-scenes behaviour is unchanged;
-only the apply site ownership differs from older midisc builds.
+and emuyia/ems-octakit (pinned ca3b527).
 
 | Finding | Detail |
 |---------|--------|
-| Shared clash | Older midisc hooked `STOCK_APPLY` (`0x40009094`) for pack/unpack. Octakit also needs that site for kit engine-part-load. Ledger/compose refused the pair without a `scenes-kits` bridge. |
-| MSCN6 choice | Leave `STOCK_APPLY` **stock**. Build asserts stock bytes remain. Wrapping apply during project load also hung HW. |
-| Who owns apply | Octakit can own apply alone. Midisc follows parts via hold/dial/pad `emit_ensure_msc` + Part Save/Reload hooks + bank Site A/B + after-project CKPT seed. |
+| Shared clash | Older midisc hooked `STOCK_APPLY` (`0x40009094`). Octakit needs that site. |
+| Choice | Leave `STOCK_APPLY` **stock**. Build asserts stock bytes remain. |
+| Who owns apply | Octakit owns apply alone. Midisc follows via hold/dial/pad + Part Save/Reload + bank Site A/B + after-project CKPT seed. |
+| `part_window` | `SEAM_CAVE` (`0x400D46E2`): IN `d3`=index → OUT `a0`=window, `d1`=stride, `d3&=0xFF`. Lock store = `a0+SPARSE_OFF`. Octakit overrides this routine for kit payload base. |
+| `KITS_GATE` | DRAM u8 after filt flags; nonzero → `bank_switch` / `bank_invalidate` skip part-set coupling. |
 | Bam Site B | Publish + unpack, never pack — keep. |
 | DRAM | Midisc does not use octakit boot temp `0x47fc7410`...`0x47fd910f`. |
-| Still open | Part Save/Reload menu hooks vs Octakit LOAD/SAVE KIT UI (unmeasured). Kits untethered from banks vs MSC keyed off `BANK_PTR` (Kits-aware form later). |
+| Still open | Kit write protocol (`gk_workspace_*` / 144 stores) — Octakit/bridge last mile. |
 
-Keep stock for compose: `STOCK_APPLY`, never body-hook `faf0`/`fbb4`, never
-`CLEAR_CAVE`. Prefer not reclaiming OS zero-run caves if targeting octabam DRAM
-loader placement later (`gas_port` / `0x40a955e0`).
+Keep stock for compose: `STOCK_APPLY`, never body-hook `faf0`/`fbb4`. Filter UI may use
+the `CLEAR_CAVE` zero island; do not put Part-Clear there. Prefer not reclaiming other
+OS zero-run caves if targeting octabam DRAM loader placement (`gas_port`).
+
+Do not force-push `main` — octabam pins midisc commits.
 
 ---
 
 ## Build / flash reminder
 
-`python tools/build_midisc40.py` produces **your** `1.40MSCN6.bin` from **your**
-1.40C (splash `1.40MSCN6`). Do not redistribute that binary. Flash/recovery:
+`python tools/build_midisc40.py` produces **your** `1.40MIDISCc.bin` from **your**
+1.40C (splash `1.40MDISCc`). Do not redistribute that binary. Flash/recovery:
 `docs/FLASHING.md`.

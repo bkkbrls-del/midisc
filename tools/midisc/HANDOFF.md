@@ -1,23 +1,22 @@
-# midisc 1.40MSCN6
+# midisc 1.40MIDISCc
 
-**Rebuild:** `python tools/build_midisc40.py` (needs your own 1.40C)  
-**Output:** `~/Desktop/1.40MSCN6.bin` · splash `1.40MSCN6` (≤10)  
-**Syx:** `out/OCTATRACK_1.40MSCN6.syx`
+**Rebuild:** `$env:PYTHONPATH="tools"; python -m tools.midisc.build`  
+**Output:** `~/Desktop/1.40MIDISCc.bin` · splash `1.40MDISCc` (≤10)
 
-## Contract
+MSCN6 morph + CC48/55/56 filter (YES-safe) + Octakit `part_window` seam.
 
-| Topic | Rule |
-|-------|------|
-| Empty XF side | `TRIG_SNAP` if step locked, else behind (`8f162`) |
-| Locked side | MSC scene cell |
-| `xf_mix` | writes `MIDI_VOICE`; also `LFO_BASE` for scene-locked flats |
-| No scenes | stock plocks only (skip remix) |
-| Mid-XF | no LFO row poke every step |
-| Full A / full B | scene-locked flats forced onto LFO row (absolute scene) |
-| Apply | `STOCK_APPLY` stays stock |
-| Banks | Site A pack+publish+unpack; Site B publish+unpack only |
-| Boot | xf2 in `SAFE_CAVE`; never body-hook `faf0`/`fbb4`; never `CLEAR_CAVE` |
+## Fixes vs MIDISCb
 
-Octakit compose notes: `docs/TECH.md` → *Compose with Octakit*.
+- CONTROL YES uses PERSONALIZE `(flag+delta)&1` — no more brick / stuck-off
+- Checked (DRAM 0, default) = CC **ON**; unchecked = **OFF**
 
-Do not redistribute built images.
+## Octakit seam (Sam 13 Sep)
+
+| Item | Behaviour |
+|------|-----------|
+| `part_window` @ `SEAM_CAVE` | IN d3=index → OUT a0=window, d1=stride, d3&=0xFF. Lock store = a0+`SPARSE_OFF`. Override this one routine for kit base. |
+| `KITS_GATE` DRAM u8 | 0=stock; nonzero → `bank_switch`/`bank_invalidate` skip part-set coupling |
+| `STOCK_APPLY` | still stock (she owns `0x40009094`) |
+| Write-into-kit protocol | still last-mile on her side (not a pointer) |
+
+Do not force-push `main`. Do not redistribute built images.
