@@ -14,9 +14,12 @@ STUB_END = 0x400D7C48  # zeros through D7C3B; FF pad to vector table @D7C50
 CODE2 = 0x400D6500  # was CLIP in 1.27; lifecycle helpers
 CODE2_END = 0x400D6600
 CLIP = 0x460C9A00  # DRAM scene clipboard (not in OS image)
-# Part-Save MIDI checkpoint (session Reload); scene clip uses CLIP+0..0x100
-CKPT = CLIP + 0x200  # 4 * 144 = 0x240 bytes
-CKPT_VALID = CKPT + 0x240  # u8 bitmask parts 0..3
+# Part-Save MIDI checkpoint (session Reload). Index = save/reload arg & 0xF:
+# OT Part menu pushes PART_DISP (window 0..15), not only stock parts 0..3.
+# 4-slot CKPT missed saves on pattern≥4 → Reload fell through to dirty shadow.
+CKPT_SLOTS = 16
+CKPT = CLIP + 0x200  # 16 * 144 = 0x900
+CKPT_VALID = CKPT + CKPT_SLOTS * 144  # u16 bitmask (slots 0..15); +2 pad
 # Trusted lock list with per-track slices; xf_mix walks list (not 8x30) when live.
 LOCK_MAGIC = CKPT_VALID + 4  # u32 == LOCK_MAGIC_VAL when live
 LOCK_COUNT = LOCK_MAGIC + 4  # u8 total
@@ -30,17 +33,29 @@ LOCK_LAST_XF = LOCK_ENTS + LOCK_ENTS_MAX * LOCK_ENT_SIZE  # u8; 0xFF = force rem
 TRIG_SNAP = (LOCK_LAST_XF + 7) & ~3  # u8[8][32] raw trig layer for XF empty side
 TRIG_SNAP_STRIDE = 32
 # MIDI CONTROL CC enable flags (u32 0=ON/allow TX, 1=OFF/block). After TRIG_SNAP.
-# Never 0x800000A8/D4/D8 (live stock — bricks). DRAM boots 0 → CCs ON / checked.
+# DRAM boots 0 → CCs ON / checked. Reboot persist TBD (PERSONALIZE A8/D8/DC tried;
+# did not survive on HW — do not claim). Never use 0x800000D4 (OS refs).
 FILT_CC48 = TRIG_SNAP + 8 * TRIG_SNAP_STRIDE  # XF CC48
 FILT_CC55 = FILT_CC48 + 4  # scene A CC55
 FILT_CC56 = FILT_CC55 + 4  # scene B CC56
 # Octakit: nonzero ⇒ bank_switch/invalidate skip part-set coupling (kits own it).
 KITS_GATE = FILT_CC56 + 4  # u8; boots 0 = stock bank↔part behaviour
+# Full MSC snapshot per window (Part Reload). Sparse CKPT alone rots after packs.
+MSC_CKPT = 0x460CB000  # 16 * 4096; below octakit boot temp
+MSC_CKPT_MAGIC = MSC_CKPT + 16 * 4096  # u32[16]; 'MSCK' when slot valid
+MSC_CKPT_MAGIC_VAL = 0x4D53434B  # 'MSCK'
+# Last part/pattern committed by stock apply_part (a6 published)
+APPLY_PART = 0x80001829
 
 SPARSE_OFF = 0x90522
 # SAVE shadow window @ bank+part*18b2+0x9504A; sparse at +0x17A2 inside it
 SHADOW_SPARSE_OFF = 0x967EC
 SPARSE_BYTES = 144
+# Part-Save freeze twin (144B immediately before live sparse). Pack writes edits
+# into SPARSE_OFF / shadow sparse; save_ui parks the freeze here so stock RELOAD
+# (shadow→working) still carries it after reboot, and reload_after promotes it.
+FREEZE_SPARSE_OFF = SPARSE_OFF - SPARSE_BYTES  # 0x90492
+SHADOW_FREEZE_SPARSE_OFF = SHADOW_SPARSE_OFF - SPARSE_BYTES  # 0x9675C
 SPARSE_MAGIC = 0x4D53  # 'MS'
 SPARSE_MAX = 46  # (144-4)/3
 MEMCPY = 0x40020898  # stock (dst, src, n)
@@ -70,6 +85,8 @@ SENT_REBUILD_MASK = 0x400D7F10
 SENT_CLAMP = 0x400D7F14  # scene-lock clamp (ARP LEG/MODE/SPD/RNG)
 SENT_VOICE_RELOAD = 0x400D7F18  # write_remixed: d2 <- MIDI_VOICE
 SENT_PART_WINDOW = 0x400D7F1C  # Octakit seam: part/kit index → window base
+SENT_APPLY_BRIDGE_CONT = 0x400D7F20  # apply_bridge continue (patched at build)
+SENT_SPARSE_CKPT = 0x400D7F24  # reload: freeze-alt sparse → working
 # SENT_XF_MIX defined with morph constants above
 
 BANK_PTR = 0x46C82456
@@ -91,6 +108,17 @@ PART_STAGING = 0x100AB196  # STOCK_SAVE copies shadow here (4 * 0x18b2)
 PART_PROJECT = 0x100A4ECE
 PART_PROJECT_SPAN = 0x62C8  # 4 * 0x18b2
 
+# Part-change UI jsr STOCK_APPLY sites (not project-load / save / clear).
+APPLY_UI_JSR = (
+    0x4002B59A,
+    0x4002B8F8,
+    0x4004A8FC,  # set pattern's part then apply
+)
+# Tail of Part Paste / pattern-matched commit (29a4c). Stock bne skips APPLY when
+# 80000003 != target — paste data only, stay on current part. Keep that bne.
+APPLY_WAIT_BNE = 0x40029AE0
+APPLY_WAIT_STOCK = "661c"  # bne.b +0x1c → skip apply
+APPLY_UI_JMP = 0x40029AF8  # jmp STOCK_APPLY when sounding matches (hook → bridge)
 STOCK_APPLY = 0x40009094
 APPLY_CONT = 0x4000909C  # after 8-byte prologue
 STOCK_SAVE = 0x4004A908
@@ -98,6 +126,16 @@ STOCK_RELOAD = 0x4004AAB4
 SAVE_UI = 0x4002DD12
 RELOAD_UI = 0x4002DD56
 SAVE_ALL = 0x4002DCD0  # saves parts 0..3
+RELOAD_CAVE = 0x400D359C  # ~204B zeros — reload_after (+ MSC restore)
+RELOAD_CAVE_END = 0x400D3668
+# Scene paste (stub overflow); zeros through 0x400D3E38
+SCENE_PASTE_CAVE = 0x400D3DA2
+SCENE_PASTE_CAVE_END = 0x400D3E38
+# Project-load: CKPT sparse → working (reload helper). Must live in a CODE cave
+# (CAVE2). Do NOT use 0x400C1153 — that zero pad sits inside a data table;
+# MIDISNi wrote code there and bricked on Part Reload.
+SPARSE_CKPT_CAVE = 0x400C1153  # UNSAFE data-table pad — do not place code
+SPARSE_CKPT_CAVE_END = 0x400C121A
 
 GATE_A = 0x400534CE
 GATE_A_STOCK = "4ab98000001266000586"
@@ -234,8 +272,9 @@ CAVE2_END = 0x400D3020
 STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
 SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
 OUT = ROOT / "out" / "mainos_midisc40.bin"
-VER = "1.40MDISCc"  # splash <=10; desktop 1.40MIDISCc.bin
-DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISCc.bin"
+VER = "1.40MDISC8"  # splash <=10
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC8.bin"
+GOLDEN = pathlib.Path.home() / "Desktop" / "1.40MIDISC68GOLDEN.bin"
 
 # Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
 RELEASE_HOOK = 0x40054CB6

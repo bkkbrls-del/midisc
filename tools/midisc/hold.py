@@ -73,7 +73,8 @@ def build_enc_unlock() -> bytes:
     a.sub_dd(0, 5)
     a.add_dd(3, 5)
     a.andi(0x1F, 5)
-    emit_ensure_msc(a, "ul_sync")
+    # MSC already current while scene held (hold_store ensure); skip ensure here
+    # so unlock+press hooks fit ENC_UNLOCK_CAVE.
     a.move_l_abs_d(SCENE_HELD, 2)
     a.mvz_b_abs(PART_DISP, 0)
     a.move_l_imm(0x18B2, 3)

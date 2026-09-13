@@ -600,12 +600,16 @@ def build_xf_mix_out() -> bytes:
 
 
 def build_morph() -> bytes:
-    """After audio morph: ensure MSC only. Never xf_mix here (kills trigs)."""
+    """After audio morph: sync MSC to APPLY_PART (audio-committed part)."""
     a = Asm()
     a.mvz_b_abs(LAST_PART, 0)
-    a.mvz_b_abs(PART_DISP, 1)
+    a.cmpi(0xFF, 0)
+    a.beq("go_unp")
+    a.mvz_b_abs(APPLY_PART, 1)
     a.hex("b081")
     a.beq("go")
+    a.move_b_d_abs(1, UNPACK_SRC)
+    a.label("go_unp")
     a.jsr(SENT_UNPACK)
     a.label("go")
     a.jmp(MORPH_CONT)
@@ -613,28 +617,21 @@ def build_morph() -> bytes:
 
 
 def build_xf_after(cont: int, stock_hex: str) -> bytes:
-
-    """After stock XF publish insn: ensure MSC, mix at current XF, stock insn."""
-
+    """After stock XF publish: sync MSC to APPLY_PART, mix, stock insn."""
     a = Asm()
-
     a.mvz_b_abs(LAST_PART, 0)
-
-    a.mvz_b_abs(PART_DISP, 1)
-
+    a.cmpi(0xFF, 0)
+    a.beq("do_unp")
+    a.mvz_b_abs(APPLY_PART, 1)
     a.hex("b081")
-
     a.beq("ok")
-
+    a.move_b_d_abs(1, UNPACK_SRC)
+    a.label("do_unp")
     a.jsr(SENT_UNPACK)
-
     a.label("ok")
     a.jsr(SENT_XF_MIX)
-
     a.hex(stock_hex)
-
     a.jmp(cont)
-
     return a.link()
 
 

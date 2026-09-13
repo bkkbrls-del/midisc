@@ -6,12 +6,24 @@ from ot3_asm import Asm
 from .memory_map import *  # noqa: F403
 
 def emit_ensure_msc(a: Asm, synced: str = "synced") -> None:
-    """If MSC is not mirroring PART_DISP, unpack first (reboot / part switch)."""
+    """Sync MSC to APPLY_PART (80001829) — same commit as audio part apply.
+
+    PART_DISP lags until pattern start (stock copies pattern→PART_DISP at
+    0x40062148). Following PART_DISP made MIDI wait a full pattern while audio
+    (STOCK_APPLY) had already switched. apply_bridge publishes PART_DISP and
+    PAT_ACTIVE (80000003) from APPLY_PART then xf_mix's immediately.
+    """
     a.mvz_b_abs(LAST_PART, 0)
-    a.mvz_b_abs(PART_DISP, 1)
+    a.cmpi(0xFF, 0)
+    a.beq("do_disp")
+    a.mvz_b_abs(APPLY_PART, 1)
     a.hex("b081")
     a.beq(synced)
+    a.move_b_d_abs(1, UNPACK_SRC)
     a.jsr(SENT_UNPACK)
+    a.bra(synced)
+    a.label("do_disp")
+    a.jsr(SENT_UNPACK)  # UNPACK_SRC=FF → PART_DISP
     a.label(synced)
 
 def emit_ctrl_enable(a: Asm, track_dn: int, flat_dn: int) -> None:

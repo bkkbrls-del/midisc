@@ -1,22 +1,18 @@
-# midisc 1.40MIDISCc
+# midisc 1.40MIDISC8 (golden)
 
 **Rebuild:** `$env:PYTHONPATH="tools"; python -m tools.midisc.build`  
-**Output:** `~/Desktop/1.40MIDISCc.bin` · splash `1.40MDISCc` (≤10)
+**Output:** `~/Desktop/1.40MIDISC8.bin` · golden `~/Desktop/1.40MIDISC68GOLDEN.bin`  
+**Splash:** `1.40MDISC8` (≤10)
 
-MSCN6 morph + CC48/55/56 filter (YES-safe) + Octakit `part_window` seam.
+HW-confirmed: Part Save / Reload / reboot edit persistence, instant part Yes
+(MIDI), Part Paste stays on current part.
 
-## Fixes vs MIDISCb
+## Highlights
 
-- CONTROL YES uses PERSONALIZE `(flag+delta)&1` — no more brick / stuck-off
-- Checked (DRAM 0, default) = CC **ON**; unchecked = **OFF**
-
-## Octakit seam (Sam 13 Sep)
-
-| Item | Behaviour |
-|------|-----------|
-| `part_window` @ `SEAM_CAVE` | IN d3=index → OUT a0=window, d1=stride, d3&=0xFF. Lock store = a0+`SPARSE_OFF`. Override this one routine for kit base. |
-| `KITS_GATE` DRAM u8 | 0=stock; nonzero → `bank_switch`/`bank_invalidate` skip part-set coupling |
-| `STOCK_APPLY` | still stock (she owns `0x40009094`) |
-| Write-into-kit protocol | still last-mile on her side (not a pointer) |
-
-Do not force-push `main`. Do not redistribute built images.
+- **Pack:** working→shadow→PART_PROJECT + PART_SAVED; freeze twin untouched
+- **Part Save:** parks FREEZE_SPARSE_OFF; STOCK_SAVE + CKPT/MSC_CKPT
+- **Part Reload:** MSC_CKPT → freeze-alt → unpack + pack + xf_mix
+- **Part Yes:** apply_bridge syncs PART_DISP + PAT_ACTIVE, unpack + xf_mix now
+- **Part Paste:** stock APPLY_WAIT_BNE (no select other parts)
+- **CC48/55/56:** MIDI CONTROL ticks (session DRAM; reboot persist TODO)
+- STOCK_APPLY head stock; Octakit PART_WINDOW seam; DRAM `0x460C9A00+` (not `0x47fc…`)

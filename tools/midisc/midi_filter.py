@@ -2,7 +2,7 @@
 
 Safety (from MIDSg/MIDSk):
 - Gate entered with jmp only (jsr + jmp exits bricked LFO SPD/DEP).
-- Flags in private DRAM after TRIG_SNAP — never 0x800000A8/D4/D8.
+- Flags in private DRAM after TRIG_SNAP (reboot persist still TODO).
 - Setter andi.l #1 only (no andi.b garbage).
 """
 from __future__ import annotations
@@ -14,7 +14,7 @@ from ot3_asm import Asm
 from .memory_map import FILT_CC48, FILT_CC55, FILT_CC56
 from .util import off
 
-GLYPH_ON = 0x400B5E90   # checked
+GLYPH_ON = 0x400B5E90  # checked
 GLYPH_OFF = 0x400B5E8E  # unchecked
 
 CTRL_LABELS = 0x400B29E0
@@ -49,7 +49,7 @@ SETTER_LEA_SITES = (0x400684A2, 0x40068570, 0x4006858A, 0x400685A4)
 
 
 def _checkbox_getter(flag: int) -> bytes:
-    """flag==0 → checked (CC ON); flag!=0 → unchecked (CC OFF). DRAM boots 0."""
+    """flag==0 → checked (CC ON); flag!=0 → unchecked (CC OFF)."""
     return bytes.fromhex(
         f"203c{GLYPH_ON:08x}"  # move.l #checked,d0
         f"4ab9{flag:08x}"  # tst.l flag
@@ -131,7 +131,9 @@ def ctrl_scroll_cave_bytes() -> bytes:
 def apply_midi_ctrl_filter(img: bytearray, gate_addr: int) -> None:
     """UI tables in FILTER_CAVE; TX gate placed by caller (jmp entry)."""
     if bytes(img[off(CC_TX_HOOK) : off(CC_TX_HOOK) + 6]).hex() != CC_TX_HOOK_STOCK:
-        raise SystemExit(f"CC_TX_HOOK not stock: {bytes(img[off(CC_TX_HOOK):off(CC_TX_HOOK)+6]).hex()}")
+        raise SystemExit(
+            f"CC_TX_HOOK not stock: {bytes(img[off(CC_TX_HOOK):off(CC_TX_HOOK)+6]).hex()}"
+        )
     if any(img[off(FILTER_CAVE) : off(FILTER_CAVE_END)]):
         raise SystemExit("FILTER_CAVE not empty")
     if any(img[off(SCROLL_CAVE) : off(SCROLL_CAVE_END)]):
@@ -214,6 +216,12 @@ def apply_midi_ctrl_filter(img: bytearray, gate_addr: int) -> None:
     img[off(LIST_INIT_COUNT_PEA) : off(LIST_INIT_COUNT_PEA) + 4] = bytes.fromhex(f"487800{NEW_ROWS:02x}")
 
     img[off(CC_TX_HOOK) : off(CC_TX_HOOK) + 6] = bytes.fromhex(f"4ef9{gate_addr:08x}")  # jmp gate
+
+    if bytes.fromhex("800000d4") in cave or bytes.fromhex("800000d4") in build_cc_tx_gate():
+        raise SystemExit("filter must not use 0x800000D4")
+    for f in (FILT_CC48, FILT_CC55, FILT_CC56):
+        if f.to_bytes(4, "big") not in cave:
+            raise SystemExit(f"filter missing {f:#x}")
 
     print(
         f"MIDI CONTROL filter +CC48/55/56 @ {FILTER_CAVE:#x} ({len(cave)}B) "

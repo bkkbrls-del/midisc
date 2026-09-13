@@ -8,8 +8,9 @@ import sys
 from .memory_map import *  # noqa: F403
 from .util import ensure_stock, fix_jsr, jmp_abs, jsr_abs, off
 from .parts import (
-    build_after_apply, build_apply_wrap, build_bank_invalidate,
-    build_after_project_load, build_bank_publish, build_bank_switch, build_clear_part, build_dirty, build_pack,
+    build_after_apply, build_apply_bridge, build_apply_wrap, build_bank_invalidate,
+    build_after_project_load, build_bank_publish, build_bank_switch, build_clear_part, build_dirty,
+    build_freeze_alt_to_working, build_pack,
     build_part_window, build_reload_after, build_reload_ui, build_save_ui, build_unpack,
 )
 from .hold import (
@@ -127,8 +128,7 @@ def main() -> None:
     for name, blob, need in (
         ("pack", pack_b, 1),
         ("unpack", unpack_b, 2),  # try + maybe_sync
-        ("save", save_b, 2),
-        ("reload_after", reload_after_b, 1),
+        ("save", save_b, 3),  # salvage + ckpt + freeze park
         ("clear_part", clear_pt_b, 1),
     ):
         n = fix_jsr(blob, SENT_PART_WINDOW, abs_part_win)
@@ -149,7 +149,8 @@ def main() -> None:
         f"after_proj {len(after_proj_b)} @ {abs_after_proj:#x}"
     )
 
-    # SAFE_CAVE: dirty + clamp + pack + unpack + save + reload_after + xf_mix + xf2 + plock
+    # SAFE_CAVE: dirty + clamp + pack + unpack + save + xf_mix + xf2 + plock + morph + bridge
+    # reload_after lives in RELOAD_CAVE (MSC restore is larger)
     sc = bytearray()
     abs_dirty = SAFE_CAVE + len(sc)
     sc += dirty_b
@@ -161,34 +162,58 @@ def main() -> None:
     sc += unpack_b
     abs_save = SAFE_CAVE + len(sc)
     sc += save_b
-    abs_reload_after = SAFE_CAVE + len(sc)
-    sc += reload_after_b
     abs_xf_mix = SAFE_CAVE + len(sc)
     sc += xf_mix_b
     abs_xf2 = SAFE_CAVE + len(sc)
     sc += build_xf_after(XF_AFTER2_CONT, XF_AFTER2_STOCK)
     abs_plock = SAFE_CAVE + len(sc)
     sc += build_scene_after_plock()
-    # Morph-rate XF remix (delta-gated) — stub is full; keep in SAFE
     abs_morph = SAFE_CAVE + len(sc)
     sc += build_morph()
+    bridge_b = bytearray(build_apply_bridge())
+    abs_apply_bridge = SAFE_CAVE + len(sc)
+    APPLY_BRIDGE_CONT_OFF = 28  # after jmp STOCK_APPLY
+    abs_bridge_cont = abs_apply_bridge + APPLY_BRIDGE_CONT_OFF
+    sent_c = SENT_APPLY_BRIDGE_CONT.to_bytes(4, "big")
+    i_sent = bridge_b.find(sent_c)
+    if i_sent < 0:
+        sys.exit("apply_bridge missing cont sentinel")
+    bridge_b[i_sent : i_sent + 4] = abs_bridge_cont.to_bytes(4, "big")
+    sc += bridge_b
     if SAFE_CAVE + len(sc) > SAFE_CAVE_END:
-        sys.exit(f"SAFE_CAVE overrun {len(sc)} (need xf2 in SAFE; do not move to PROJECT)")
+        sys.exit(f"SAFE_CAVE overrun {len(sc)}")
     if not (SAFE_CAVE <= abs_xf2 < SAFE_CAVE_END):
         sys.exit(f"xf2 must live in SAFE_CAVE, got {abs_xf2:#x}")
     print(f"SAFE_CAVE {len(sc)} @ {SAFE_CAVE:#x} free {SAFE_CAVE_END - SAFE_CAVE - len(sc)}")
+    print(f"  apply_bridge={abs_apply_bridge:#x} cont={abs_bridge_cont:#x}")
     print(f"  dirty={abs_dirty:#x} clamp={abs_clamp:#x} pack={abs_pack:#x} unpack={abs_unpack:#x}")
-    print(f"  save={abs_save:#x} rel_after={abs_reload_after:#x} xf_mix={abs_xf_mix:#x}")
+    print(f"  save={abs_save:#x} xf_mix={abs_xf_mix:#x}")
     print(f"  xf2={abs_xf2:#x} plock={abs_plock:#x} morph={abs_morph:#x}")
+
+    if any(img[off(RELOAD_CAVE) : off(RELOAD_CAVE_END)]):
+        sys.exit("RELOAD_CAVE not empty")
+    if len(reload_after_b) > RELOAD_CAVE_END - RELOAD_CAVE:
+        sys.exit(f"RELOAD_CAVE overrun {len(reload_after_b)}")
+    abs_reload_after = RELOAD_CAVE
+    print(f"RELOAD_CAVE {len(reload_after_b)} @ {abs_reload_after:#x}")
 
     c2b = bytearray()
     abs_rebuild = CAVE2 + len(c2b)
     c2b += build_plock_morph_body()
+    freeze_b = bytearray(build_freeze_alt_to_working())
+    abs_freeze = CAVE2 + len(c2b)
+    if fix_jsr(freeze_b, SENT_PART_WINDOW, abs_part_win) < 2:
+        sys.exit("freeze_alt PART_WINDOW sentinels")
+    c2b += freeze_b
     if CAVE2 + len(c2b) > CAVE2_END:
         sys.exit(f"CAVE2 overrun {len(c2b)}")
     if any(img[off(CAVE2) : off(CAVE2_END)]):
         sys.exit("CAVE2 not empty")
-    print(f"CAVE2 {len(c2b)} @ {CAVE2:#x} plock_body={abs_rebuild:#x}")
+    print(
+        f"CAVE2 {len(c2b)} @ {CAVE2:#x} plock_body={abs_rebuild:#x} "
+        f"freeze_alt={abs_freeze:#x}"
+    )
+
     if fix_jsr(after_proj_b, SENT_UNPACK, abs_unpack) != 1:
         sys.exit("after_project_load unpack sentinel")
 
@@ -235,16 +260,24 @@ def main() -> None:
         "release": build_release_mix(),
     }
     life = {
-        "pst_sc": build_paste_scene(CLIP),
         "clr_sc": build_clear_scene(),
         "cpy_sc": build_copy_scene(CLIP),
     }
+    paste_b = bytearray(build_paste_scene(CLIP))
+    if any(img[off(SCENE_PASTE_CAVE) : off(SCENE_PASTE_CAVE_END)]):
+        sys.exit("SCENE_PASTE_CAVE not empty")
+    if len(paste_b) > SCENE_PASTE_CAVE_END - SCENE_PASTE_CAVE:
+        sys.exit(f"SCENE_PASTE_CAVE overrun {len(paste_b)}")
+    abs_paste = SCENE_PASTE_CAVE
+    print(f"SCENE_PASTE_CAVE {len(paste_b)} @ {abs_paste:#x}")
+
     pieces = {**core, **life}
     blob = bytearray()
     addrs: dict[str, int] = {}
     for name, piece in pieces.items():
         addrs[name] = STUB + len(blob)
         blob += piece
+    addrs["pst_sc"] = abs_paste
     # Bam Site B: publish+unpack only (no pack) — fits STUB free
     abs_bank_pub = STUB + len(blob)
     bank_pub_b = bytearray(build_bank_publish())
@@ -283,6 +316,11 @@ def main() -> None:
     if n_rel_mix < 3:
         sys.exit(f"stub xf_mix sentinel count {n_rel_mix} (holdx2+clear; paste no mix)")
 
+    fix_jsr(paste_b, SENT_PACK, addrs["pack"])
+    fix_jsr(paste_b, SENT_UNPACK, addrs["unpack"])
+    fix_jsr(paste_b, SENT_DIRTY, abs_dirty)
+    # paste: no xf_mix (matches prior stub policy)
+
     n2 = fix_jsr(c2, SENT_PACK, addrs["pack"])
     n2 += fix_jsr(c2, SENT_UNPACK, addrs["unpack"])
     n2 += fix_jsr(c2, SENT_XF_MIX, abs_xf_mix)
@@ -304,21 +342,26 @@ def main() -> None:
     n_sc_dirt = fix_jsr(sc, SENT_DIRTY, abs_dirty)
     n_sc_rb = fix_jsr(sc, SENT_REBUILD_MASK, addrs["rebuild"])
     if n_sc_unp < 2:
-        sys.exit(f"SAFE_CAVE unpack sentinels {n_sc_unp} (need xf paths + morph)")
-    # xf2 lives in SAFE_CAVE (M5 boot layout)
+        sys.exit(f"SAFE_CAVE unpack sentinels {n_sc_unp}")
     if n_sc_rb != 1:
         sys.exit(f"SAFE_CAVE plock-body sentinel {n_sc_rb} (need 1; pure-end row sync)")
     if n_sc_mix < 2:
         sys.exit(f"SAFE_CAVE xf_mix sentinels {n_sc_mix} (need xf2/plock + morph)")
 
-    # morph lives in SAFE_CAVE (rate-matched XF remix)
+    fix_jsr(reload_after_b, SENT_PACK, addrs["pack"])
+    fix_jsr(reload_after_b, SENT_UNPACK, addrs["unpack"])
+    fix_jsr(reload_after_b, SENT_XF_MIX, abs_xf_mix)
+    if fix_jsr(reload_after_b, SENT_SPARSE_CKPT, abs_freeze) != 1:
+        sys.exit("reload_after missing freeze_alt sentinel")
 
     img[off(SAFE_CAVE) : off(SAFE_CAVE) + len(sc)] = bytes(sc)
+    img[off(RELOAD_CAVE) : off(RELOAD_CAVE) + len(reload_after_b)] = bytes(reload_after_b)
+    img[off(SCENE_PASTE_CAVE) : off(SCENE_PASTE_CAVE) + len(paste_b)] = bytes(paste_b)
     img[off(SEAM_CAVE) : off(SEAM_CAVE) + len(seam)] = bytes(seam)
     img[off(PROJECT_CAVE) : off(PROJECT_CAVE) + len(clear_pt_b)] = bytes(clear_pt_b)
     img[off(abs_after_proj) : off(abs_after_proj) + len(after_proj_b)] = bytes(after_proj_b)
     img[off(VOICE_RELOAD_CAVE) : off(VOICE_RELOAD_CAVE) + len(voice_rel_b)] = bytes(voice_rel_b)
-    unlock_b = build_enc_unlock()
+    unlock_b = bytearray(build_enc_unlock())
     abs_unlock = ENC_UNLOCK_CAVE
     hook_a_b = build_enc_press_hook(ENC_PRESS_A_CONT, ENC_PRESS_A_BAIL, abs_unlock)
     abs_hook_a = ENC_UNLOCK_CAVE + len(unlock_b)
@@ -333,7 +376,7 @@ def main() -> None:
     n_eu += fix_jsr(enc_blob, SENT_DIRTY, abs_dirty)
     n_eu += fix_jsr(enc_blob, SENT_XF_MIX, abs_xf_mix)
     n_eu += fix_jsr(enc_blob, SENT_UNPACK, abs_unpack)
-    if n_eu < 4:
+    if n_eu < 3:
         sys.exit(f"enc_unlock sentinel fixups {n_eu}")
     img[off(ENC_UNLOCK_CAVE) : off(ENC_UNLOCK_CAVE) + len(enc_blob)] = bytes(enc_blob)
     print(f"  enc_unlock={abs_unlock:#x} hooks={abs_hook_a:#x}/{abs_hook_b:#x} ({len(enc_blob)}B)")
@@ -389,8 +432,18 @@ def main() -> None:
     img[off(WRITE_HOOK) : off(WRITE_HOOK) + WRITE_LEN] = jmp_abs(abs_write_mix) + b"\x4e\x71"
     img[off(PLOCK_DONE) : off(PLOCK_DONE) + PLOCK_DONE_LEN] = jmp_abs(addrs["plock"]) + b"\x4e\x71\x4e\x71"
 
-    # STOCK_APPLY left stock — apply pack/unpack during project load hangs HW
-    # (MIDISC0B). Part edits still pack via hold/dial; ensure unpacks on touch.
+    # STOCK_APPLY head stays stock (project load + Octakit). Part-change UI
+    # jsr/jmp sites → apply_bridge (instant PART_DISP/PAT_ACTIVE + xf_mix).
+    # Leave APPLY_WAIT_BNE stock: Part Paste must not APPLY/select other parts.
+    if bytes(img[off(APPLY_WAIT_BNE) : off(APPLY_WAIT_BNE) + 2]).hex() != APPLY_WAIT_STOCK:
+        sys.exit(f"APPLY_WAIT_BNE stock mismatch {bytes(img[off(APPLY_WAIT_BNE):off(APPLY_WAIT_BNE)+2]).hex()}")
+    for site in APPLY_UI_JSR:
+        if bytes(img[off(site) : off(site) + 6]) != jsr_abs(STOCK_APPLY):
+            sys.exit(f"APPLY_UI jsr {site:#x} not jsr STOCK_APPLY")
+        img[off(site) : off(site) + 6] = jsr_abs(abs_apply_bridge)
+    if bytes(img[off(APPLY_UI_JMP) : off(APPLY_UI_JMP) + 6]) != jmp_abs(STOCK_APPLY):
+        sys.exit("APPLY_UI_JMP not jmp STOCK_APPLY")
+    img[off(APPLY_UI_JMP) : off(APPLY_UI_JMP) + 6] = jmp_abs(abs_apply_bridge)
     img[off(SAVE_UI) : off(SAVE_UI) + 6] = jsr_abs(abs_save)
     img[off(RELOAD_UI) : off(RELOAD_UI) + 6] = jsr_abs(abs_reload)
     img[off(RELOAD_UI_B) : off(RELOAD_UI_B) + 6] = jsr_abs(abs_reload)
@@ -413,6 +466,8 @@ def main() -> None:
         (off(CODE2), off(CODE2) + len(c2)),
         (off(STUB), off(STUB) + len(blob)),
         (off(SAFE_CAVE), off(SAFE_CAVE) + len(sc)),
+        (off(RELOAD_CAVE), off(RELOAD_CAVE) + len(reload_after_b)),
+        (off(SCENE_PASTE_CAVE), off(SCENE_PASTE_CAVE) + len(paste_b)),
         (off(PROJECT_CAVE), off(PROJECT_CAVE) + len(clear_pt_b) + len(after_proj_b)),
         (off(VOICE_RELOAD_CAVE), off(VOICE_RELOAD_CAVE) + len(voice_rel_b)),
         (off(CAVE2), off(CAVE2) + len(c2b)),
@@ -427,6 +482,8 @@ def main() -> None:
         *[(off(s + 2), off(s + 2) + 4) for s in SETTER_LEA_SITES],
         (off(0x400D7C3C), off(0x400D7C50)),
         (off(LAST_PART), off(APPLY_RET) + 4),
+        *[(off(s), off(s) + 6) for s in APPLY_UI_JSR],
+        (off(APPLY_UI_JMP), off(APPLY_UI_JMP) + 6),
         (off(GATE_A), off(GATE_A) + GATE_A_LEN),
         (off(GATE_B), off(GATE_B) + GATE_B_LEN),
         (off(DIAL_HOOK), off(DIAL_HOOK) + DIAL_LEN),
@@ -460,6 +517,8 @@ def main() -> None:
         (off(SAVE_UI), off(SAVE_UI) + 6),
         (off(RELOAD_UI), off(RELOAD_UI) + 6),
         (off(RELOAD_UI_B), off(RELOAD_UI_B) + 6),
+        *[(off(s), off(s) + 6) for s in APPLY_UI_JSR],
+        (off(APPLY_UI_JMP), off(APPLY_UI_JMP) + 6),
         (off(BANK_WR_SWITCH_A), off(BANK_WR_SWITCH_A) + 6),
         (off(BANK_WR_SWITCH_B), off(BANK_WR_SWITCH_B) + 6),
         (off(BANK_WR_INIT_A), off(BANK_WR_INIT_A) + 6),
@@ -539,6 +598,8 @@ def main() -> None:
         (STUB, len(blob)),
         (CODE2, len(c2)),
         (SAFE_CAVE, len(sc)),
+        (RELOAD_CAVE, len(reload_after_b)),
+        (SCENE_PASTE_CAVE, len(paste_b)),
         (SEAM_CAVE, len(seam)),
         (PROJECT_CAVE, len(clear_pt_b) + len(after_proj_b)),
         (VOICE_RELOAD_CAVE, len(voice_rel_b)),
@@ -616,7 +677,10 @@ def main() -> None:
     if r.returncode:
         sys.exit("repack failed")
 
+    GOLDEN.write_bytes(DESKTOP.read_bytes())
+
     print(f"Flash: {DESKTOP} ({VER})")
+    print(f"Golden: {GOLDEN}")
     print(f"  SAFE_CAVE={SAFE_CAVE:#x} CAVE2={CAVE2:#x} xf_mix={abs_xf_mix:#x} morph={abs_morph:#x}")
     print(f"  CLIP={CLIP:#x}; CODE2={CODE2:#x}")
     print(f"  stubs {[f'{k}={v:#x}' for k, v in addrs.items()]}")
