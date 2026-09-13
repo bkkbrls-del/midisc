@@ -79,14 +79,9 @@ pack:
         move.l %a0,-(%sp)
         move.l %a1,-(%sp)
         .byte 0x2f, 0x0a, 0x2f, 0x0b
-        andi.l #0xf,%d3
+        jsr (part_window).l
         move.l %d3,%d4
-        move.l %d3,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
         move.l %d1,%d5
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
         adda.l #0x90522,%a0
         .byte 0x22, 0x48
         .byte 0x2f, 0x09
@@ -129,13 +124,6 @@ pack:
         .byte 0x4f, 0xef, 0x00, 0x0c
         .byte 0x48, 0x78, 0x18, 0xb2
         .byte 0x2f, 0x02
-        move.l #0x100ab196,%d0
-        add.l %d5,%d0
-        .byte 0x2f, 0x00
-        .byte 0x4e, 0x93
-        .byte 0x4f, 0xef, 0x00, 0x0c
-        .byte 0x48, 0x78, 0x18, 0xb2
-        .byte 0x2f, 0x02
         move.l #0x100a4ece,%d0
         add.l %d5,%d0
         .byte 0x2f, 0x00
@@ -143,7 +131,9 @@ pack:
         .byte 0x4f, 0xef, 0x00, 0x0c
         movea.l (0x46c82456).l,%a0
         adda.l #0x9b312,%a0
-        adda.l %d4,%a0
+        move.l %d4,%d1
+        andi.l #0x3,%d1
+        adda.l %d1,%a0
         moveq #1,%d1
         .byte 0x10, 0x81
         .byte 0x26, 0x5f, 0x24, 0x5f
@@ -188,15 +178,10 @@ unpack:
         bne.w .Lunpack_got
         mvz.b (0x100b14cf).l,%d3
 .Lunpack_got:
-        andi.l #0xf,%d3
         moveq #-1,%d0
         move.b %d0,(unpack_src).l
 .Lunpack_try:
-        move.l %d3,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
+        jsr (part_window).l
         adda.l %d2,%a0
         .byte 0x22, 0x48
         .byte 0x30, 0x11
@@ -223,11 +208,7 @@ unpack:
 .Lunpack_maybe_sync:
         tst.l %d4
         beq.w .Lunpack_hit
-        move.l %d3,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
+        jsr (part_window).l
         .byte 0x22, 0x48
         adda.l #0x967ec,%a0
         adda.l #0x90522,%a1
@@ -256,14 +237,10 @@ save:
         move.l %d2,-(%sp)
         move.l %a0,-(%sp)
         move.l %a1,-(%sp)
-        move.l (24,%sp),%d0
-        andi.l #0xf,%d0
-        move.l %d0,%d2
-        move.l %d2,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
+        move.l (24,%sp),%d3
+        andi.l #0xf,%d3
+        move.l %d3,%d2
+        jsr (part_window).l
         .byte 0x22, 0x48
         adda.l #0x90522,%a0
         .byte 0x30, 0x10
@@ -289,14 +266,13 @@ save:
         move.b %d0,(last_part).l
         jsr (pack).l
 .Lsave_ckpt:
-        move.l %d2,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
+        move.l %d2,%d3
+        jsr (part_window).l
         adda.l #0x90522,%a0
         .byte 0x22, 0x48
         move.l %d2,%d0
+        andi.l #0xf,%d0
+        move.l %d0,%d3
         move.l #0x90,%d1
         muls.l %d0,%d1
         movea.l #0x460c9c00,%a0
@@ -307,64 +283,52 @@ save:
         .byte 0x10, 0xc0
         .byte 0x53, 0x81
         bne.w .Lsave_cp_ck
+        move.l %d2,%d0
+        mvz.b (0x100b14cf).l,%d1
+        .byte 0xb0, 0x81
+        bne.w .Lsave_done
+        .byte 0x2f, 0x0a
+        move.l %d3,%d0
+        lsl.l #8,%d0
+        lsl.l #4,%d0
+        movea.l #0x460cb000,%a0
+        adda.l %d0,%a0
+        movea.l #msc,%a1
+        movea.l #0x40020898,%a2
+        .byte 0x48, 0x78, 0x10, 0x00
+        .byte 0x2f, 0x09
+        .byte 0x2f, 0x08
+        .byte 0x4e, 0x92
+        .byte 0x4f, 0xef, 0x00, 0x0c
+        move.l %d3,%d0
+        lsl.l #2,%d0
+        movea.l #0x460db000,%a0
+        adda.l %d0,%a0
+        move.l #0x4d53434b,%d1
+        .byte 0x20, 0x81
+        .byte 0x24, 0x5f
+.Lsave_done:
+        move.l %d2,%d3
+        jsr (part_window).l
+        .byte 0x22, 0x48
+        adda.l #0x90522,%a1
+        .byte 0x30, 0x11
+        cmpi.l #0x4d53,%d0
+        bne.w .Lsave_park_skip
+        adda.l #0x90492,%a0
+        move.l #0x90,%d1
+.Lsave_cp_fr:
+        .byte 0x10, 0x19
+        .byte 0x10, 0xc0
+        .byte 0x53, 0x81
+        bne.w .Lsave_cp_fr
+.Lsave_park_skip:
         move.l (%sp)+,%a1
         move.l (%sp)+,%a0
         move.l (%sp)+,%d2
         move.l (%sp)+,%d1
         move.l (%sp)+,%d0
         jmp (0x4004a908).l
-
-        .global rel_after
-rel_after:
-        .byte 0x2f, 0x00
-        move.l %d1,-(%sp)
-        move.l %d2,-(%sp)
-        move.l %d3,-(%sp)
-        move.l %a0,-(%sp)
-        move.l %a1,-(%sp)
-        move.l (24,%sp),%d3
-        andi.l #0xf,%d3
-        move.l %d3,%d0
-        move.l #0x90,%d1
-        muls.l %d0,%d1
-        movea.l #0x460c9c00,%a0
-        adda.l %d1,%a0
-        .byte 0x30, 0x10
-        cmpi.l #0x4d53,%d0
-        bne.w .Lrel_after_use_shadow
-        .byte 0x2f, 0x08
-        move.l %d3,%d0
-        move.l #0x18b2,%d1
-        muls.l %d0,%d1
-        movea.l (0x46c82456).l,%a0
-        adda.l %d1,%a0
-        adda.l #0x90522,%a0
-        .byte 0x22, 0x48
-        .byte 0x20, 0x5f
-        move.l #0x90,%d2
-.Lrel_after_ck_to_w:
-        .byte 0x10, 0x18
-        .byte 0x12, 0xc0
-        .byte 0x53, 0x82
-        bne.w .Lrel_after_ck_to_w
-        move.l %d3,%d0
-        move.b %d0,(unpack_src).l
-        bra.w .Lrel_after_do_unp
-.Lrel_after_use_shadow:
-        moveq #-2,%d0
-        move.b %d0,(unpack_src).l
-.Lrel_after_do_unp:
-        move.l (%sp)+,%a1
-        move.l (%sp)+,%a0
-        move.l (%sp)+,%d3
-        move.l (%sp)+,%d2
-        move.l (%sp)+,%d1
-        jsr (unpack).l
-        jsr (pack).l
-        jsr (0x400418e0).l
-        .byte 0x20, 0x1f
-        movea.l (apply_ret).l,%a0
-        .byte 0x4e, 0xd0
 
         .global xf_mix
 xf_mix:
@@ -464,7 +428,7 @@ xf_mix:
         move.l %d6,%d0
         lsl.l #5,%d0
         add.l %d1,%d0
-        movea.l #0x460c9ec0,%a0
+        movea.l #0x460ca580,%a0
         adda.l %d0,%a0
         mvz.b (%a0),%d3
         cmpi.l #0xff,%d3
@@ -484,7 +448,7 @@ xf_mix:
         move.l %d6,%d0
         lsl.l #5,%d0
         add.l %d1,%d0
-        movea.l #0x460c9ec0,%a0
+        movea.l #0x460ca580,%a0
         adda.l %d0,%a0
         mvz.b (%a0),%d4
         cmpi.l #0xff,%d4
@@ -622,9 +586,13 @@ xf_mix:
         .global xf2
 xf2:
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Lxf2_do_unp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Lxf2_ok
+        move.b %d1,(unpack_src).l
+.Lxf2_do_unp:
         jsr (unpack).l
 .Lxf2_ok:
         jsr (xf_mix).l
@@ -644,7 +612,7 @@ plock:
         .byte 0x2f, 0x09
         move.l %d7,%d0
         lsl.l #5,%d0
-        movea.l #0x460c9ec0,%a0
+        movea.l #0x460ca580,%a0
         adda.l %d0,%a0
         .byte 0x22, 0x57
         .byte 0x20, 0xd9
@@ -674,3 +642,40 @@ plock:
         jsr (rebuild).l
 .Lplock_stock:
         .byte 0x4c, 0xd7, 0x3c, 0xfc, 0x4f, 0xef, 0x00, 0x28, 0x4e, 0x75
+
+        .global morph
+morph:
+        mvz.b (last_part).l,%d0
+        cmpi.l #0xff,%d0
+        beq.w .Lmorph_go_unp
+        mvz.b (0x80001829).l,%d1
+        .byte 0xb0, 0x81
+        beq.w .Lmorph_go
+        move.b %d1,(unpack_src).l
+.Lmorph_go_unp:
+        jsr (unpack).l
+.Lmorph_go:
+        jmp (0x4003577c).l
+
+        .global apply_bridge
+apply_bridge:
+        jsr (pack).l
+        .byte 0x20, 0x17
+        move.l %d0,(apply_ret).l
+        move.l #bridge_cont,%d0
+        .byte 0x2e, 0x80
+        jmp (0x40009094).l
+        mvz.b (0x80001829).l,%d0
+        move.b %d0,(unpack_src).l
+        move.b %d0,(0x100b14cf).l
+        move.b %d0,(0x80000003).l
+        jsr (unpack).l
+        .byte 0x42, 0xb9, 0x46, 0x0c, 0xa5, 0x04
+        moveq #-1,%d0
+        move.b %d0,(0x460ca579).l
+        jsr (xf_mix).l
+        movea.l (apply_ret).l,%a0
+        .byte 0x4e, 0xd0
+
+        .global bridge_cont
+        .set bridge_cont, apply_bridge + 28

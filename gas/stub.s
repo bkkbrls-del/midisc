@@ -8,9 +8,13 @@
         .global xf1
 xf1:
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Lxf1_do_unp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Lxf1_ok
+        move.b %d1,(unpack_src).l
+.Lxf1_do_unp:
         jsr (unpack).l
 .Lxf1_ok:
         jsr (xf_mix).l
@@ -22,9 +26,15 @@ hold_a:
         tst.l (0x80000012).l
         beq.w .Lhold_a_audio
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Lhold_a_do_disp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Lhold_a_hold_sync
+        move.b %d1,(unpack_src).l
+        jsr (unpack).l
+        bra.w .Lhold_a_hold_sync
+.Lhold_a_do_disp:
         jsr (unpack).l
 .Lhold_a_hold_sync:
         move.l (0x460d1684).l,%d0
@@ -77,9 +87,9 @@ hold_a:
         move.b %d0,(last_part).l
         jsr (pack).l
         jsr (dirty).l
-        .byte 0x42, 0xb9, 0x46, 0x0c, 0x9e, 0x44
+        .byte 0x42, 0xb9, 0x46, 0x0c, 0xa5, 0x04
         moveq #-1,%d0
-        move.b %d0,(0x460c9eb9).l
+        move.b %d0,(0x460ca579).l
         jsr (xf_mix).l
         jmp (0x40053a36).l
 .Lhold_a_bail:
@@ -92,9 +102,15 @@ hold_b:
         tst.l (0x80000012).l
         beq.w .Lhold_b_audio
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Lhold_b_do_disp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Lhold_b_hold_sync
+        move.b %d1,(unpack_src).l
+        jsr (unpack).l
+        bra.w .Lhold_b_hold_sync
+.Lhold_b_do_disp:
         jsr (unpack).l
 .Lhold_b_hold_sync:
         move.l (0x460d1684).l,%d0
@@ -147,9 +163,9 @@ hold_b:
         move.b %d0,(last_part).l
         jsr (pack).l
         jsr (dirty).l
-        .byte 0x42, 0xb9, 0x46, 0x0c, 0x9e, 0x44
+        .byte 0x42, 0xb9, 0x46, 0x0c, 0xa5, 0x04
         moveq #-1,%d0
-        move.b %d0,(0x460c9eb9).l
+        move.b %d0,(0x460ca579).l
         jsr (xf_mix).l
         jmp (0x40053464).l
 .Lhold_b_bail:
@@ -168,9 +184,15 @@ dial:
         move.l %a0,-(%sp)
         move.l %a1,-(%sp)
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Ldial_do_disp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Ldial_dial_sync
+        move.b %d1,(unpack_src).l
+        jsr (unpack).l
+        bra.w .Ldial_dial_sync
+.Ldial_do_disp:
         jsr (unpack).l
 .Ldial_dial_sync:
         mvz.b (0x100b14cf).l,%d0
@@ -276,9 +298,15 @@ pad:
         .byte 0x4f, 0xef, 0xff, 0xe4
         .byte 0x48, 0xd7, 0x04, 0xfc
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Lpad_do_disp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Lpad_pad_sync
+        move.b %d1,(unpack_src).l
+        jsr (unpack).l
+        bra.w .Lpad_pad_sync
+.Lpad_do_disp:
         jsr (unpack).l
 .Lpad_pad_sync:
         move.l (32,%sp),%d2
@@ -309,9 +337,15 @@ press:
         tst.l (0x80000012).l
         beq.w .Lpress_done
         mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
+        cmpi.l #0xff,%d0
+        beq.w .Lpress_do_disp
+        mvz.b (0x80001829).l,%d1
         .byte 0xb0, 0x81
         beq.w .Lpress_press_sync
+        move.b %d1,(unpack_src).l
+        jsr (unpack).l
+        bra.w .Lpress_press_sync
+.Lpress_do_disp:
         jsr (unpack).l
 .Lpress_press_sync:
         .byte 0x48, 0x78, 0xff, 0xff
@@ -330,40 +364,6 @@ release:
         jsr (0x400418e0).l
         .byte 0x50, 0x8f
         jmp (0x4007cf28).l
-
-        .global pst_sc
-pst_sc:
-        move.l (0x460d0ffa).l,%d0
-        cmpi.l #0x10,%d0
-        bne.w .Lpst_sc_stock
-        jsr (unpack).l
-        move.l %d0,-(%sp)
-        move.l %d1,-(%sp)
-        move.l %a0,-(%sp)
-        move.l %a1,-(%sp)
-        move.l (24,%sp),%d0
-        andi.l #0xf,%d0
-        lsl.l #8,%d0
-        movea.l #msc,%a0
-        adda.l %d0,%a0
-        .byte 0x22, 0x48
-        movea.l #0x460c9a00,%a0
-        move.l #0x100,%d1
-.Lpst_sc_ps:
-        .byte 0x10, 0x18
-        .byte 0x12, 0xc0
-        .byte 0x53, 0x81
-        bne.w .Lpst_sc_ps
-        move.l (%sp)+,%a1
-        move.l (%sp)+,%a0
-        move.l (%sp)+,%d1
-        move.l (%sp)+,%d0
-        mvz.b (0x100b14cf).l,%d0
-        move.b %d0,(last_part).l
-        jsr (pack).l
-        jsr (dirty).l
-.Lpst_sc_stock:
-        jmp (0x40027578).l
 
         .global clr_sc
 clr_sc:
@@ -404,9 +404,9 @@ clr_sc:
         move.b %d0,(last_part).l
         jsr (pack).l
         jsr (dirty).l
-        .byte 0x42, 0xb9, 0x46, 0x0c, 0x9e, 0x44
+        .byte 0x42, 0xb9, 0x46, 0x0c, 0xa5, 0x04
         moveq #-1,%d0
-        move.b %d0,(0x460c9eb9).l
+        move.b %d0,(0x460ca579).l
         jsr (xf_mix).l
         jmp (0x40038c30).l
 
@@ -434,16 +434,6 @@ cpy_sc:
         move.l (%sp)+,%d1
         move.l (%sp)+,%d0
         jmp (0x400274cc).l
-
-        .global morph
-morph:
-        mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
-        .byte 0xb0, 0x81
-        beq.w .Lmorph_go
-        jsr (unpack).l
-.Lmorph_go:
-        jmp (0x4003577c).l
 
         .global bank_pub
 bank_pub:
