@@ -55,6 +55,11 @@ def _symbols(mm):
         mm.LAST_PART: "last_part", mm.UNPACK_SRC: "unpack_src",
         mm.LAST_BANK: "last_bank", mm.APPLY_RET: "apply_ret",
         AFTER_SENT: "after", REL_AFTER_SENT: "rel_after", UNLOCK_SENT: "unlock",
+        # 1.40MIDISC8: the Octakit seam, the freeze twin, and the apply
+        # bridge's continuation -- a point 28 bytes INSIDE apply_bridge,
+        # which the .s carries as `.set bridge_cont, apply_bridge + 28`.
+        mm.SENT_PART_WINDOW: "part_window", mm.SENT_SPARSE_CKPT: "freeze_alt",
+        mm.SENT_APPLY_BRIDGE_CONT: "bridge_cont",
     }
 
 
@@ -194,9 +199,11 @@ ot3_asm.Asm = GasAsm          # every `from ot3_asm import Asm` below gets this
 
 from midisc import memory_map as mm  # noqa: E402
 from midisc.parts import (  # noqa: E402
-    build_after_apply, build_apply_wrap, build_bank_invalidate, build_bank_switch,
-    build_after_project_load, build_bank_publish, build_clear_part, build_dirty,
-    build_pack, build_reload_after, build_reload_ui, build_save_ui, build_unpack)
+    build_after_apply, build_apply_bridge, build_apply_wrap, build_bank_invalidate,
+    build_bank_switch, build_after_project_load, build_bank_publish, build_clear_part,
+    build_dirty, build_freeze_alt_to_working, build_pack, build_part_window,
+    build_reload_after, build_reload_ui, build_save_ui, build_unpack)
+from midisc.midi_filter import build_cc_tx_gate  # noqa: E402
 from midisc.hold import (  # noqa: E402
     build_addi_d0, build_addi_d1, build_dial, build_enc_press_hook, build_enc_unlock,
     build_hold_store, build_press_refresh, build_scene_lock_clamp)
@@ -204,35 +211,50 @@ from midisc.scene_ui import (  # noqa: E402
     build_clear_scene, build_copy_scene, build_pad_has_locks, build_paste_scene,
     build_release_mix)
 from midisc.morph import (  # noqa: E402
-    build_morph, build_rebuild_lock_mask, build_scene_after_plock, build_scene_applied,
+    build_morph, build_plock_morph_body, build_scene_after_plock, build_scene_applied,
     build_voice_reload_d2, build_write_remixed, build_xf_after, build_xf_mix_out)
 
 SYMBOLS.update(_symbols(mm))
 
 # Each region, in build.py's own order; (routine symbol, builder, args).
+# MIRRORS build.py main() -- and is CHECKED against it: verify() compares
+# every region's bytes with the slice of build.py's own patched image, so a
+# routine added, moved or dropped there fails here (the table went stale
+# once, MSCN6 -> MIDISC8, and the seven regions it knew still "reproduced
+# the encoder" -- of the wrong list).
 REGIONS = {
     "safe_cave": (mm.SAFE_CAVE, [
         ("dirty", build_dirty, ()),
         ("clamp", build_scene_lock_clamp, ()),
         ("pack", build_pack, ()), ("unpack", build_unpack, ()),
-        ("save", build_save_ui, ()), ("rel_after", build_reload_after, ()),
+        ("save", build_save_ui, ()),
         ("xf_mix", build_xf_mix_out, ()),
         ("xf2", build_xf_after, (mm.XF_AFTER2_CONT, mm.XF_AFTER2_STOCK)),
-        ("plock", build_scene_after_plock, ())]),
-    "cave2": (mm.CAVE2, [("rebuild", build_rebuild_lock_mask, ())]),
+        ("plock", build_scene_after_plock, ()),
+        ("morph", build_morph, ()),
+        ("apply_bridge", build_apply_bridge, ())]),
+    "reload_cave": (mm.RELOAD_CAVE, [("rel_after", build_reload_after, ())]),
+    "cave2": (mm.CAVE2, [("rebuild", build_plock_morph_body, ()),
+                         ("freeze_alt", build_freeze_alt_to_working, ())]),
+    # SEAM_CAVE is one region in build.py; here it is two units so a linker
+    # can order them: part_window depends on nothing and pack/unpack call it,
+    # while bank_sw/bank_inv call pack/unpack. Same bytes, same addresses.
+    "seam": (mm.SEAM_CAVE, [("part_window", build_part_window, ())]),
+    "seam_bank": (mm.SEAM_CAVE + len(build_part_window()), [
+        ("bank_sw", build_bank_switch, ()), ("bank_inv", build_bank_invalidate, ())]),
     "code2": (mm.CODE2, [
         ("after", build_after_apply, ()), ("apply", build_apply_wrap, (AFTER_SENT,)),
         ("reload", build_reload_ui, (REL_AFTER_SENT,)),
-        ("bank_sw", build_bank_switch, ()), ("bank_inv", build_bank_invalidate, ()),
-        ("scene_done", build_scene_applied, ()), ("write_mix", build_write_remixed, ())]),
+        ("scene_done", build_scene_applied, ()), ("write_mix", build_write_remixed, ()),
+        ("cc_gate", build_cc_tx_gate, ())]),
+    "scene_paste": (mm.SCENE_PASTE_CAVE, [("pst_sc", build_paste_scene, (mm.CLIP,))]),
     "stub": (mm.STUB, [
         ("xf1", build_xf_after, (mm.XF_AFTER1_CONT, mm.XF_AFTER1_STOCK)),
         ("hold_a", build_hold_store, ("a",)), ("hold_b", build_hold_store, ("b",)),
         ("dial", build_dial, ()), ("taddi", build_addi_d0, ()), ("paddi", build_addi_d1, ()),
         ("pad", build_pad_has_locks, ()), ("press", build_press_refresh, ()),
         ("release", build_release_mix, ()),
-        ("pst_sc", build_paste_scene, (mm.CLIP,)), ("clr_sc", build_clear_scene, ()),
-        ("cpy_sc", build_copy_scene, (mm.CLIP,)), ("morph", build_morph, ()),
+        ("clr_sc", build_clear_scene, ()), ("cpy_sc", build_copy_scene, (mm.CLIP,)),
         ("bank_pub", build_bank_publish, ())]),
     "project_cave": (mm.PROJECT_CAVE, [
         ("clr_pt", build_clear_part, ()),
@@ -244,6 +266,9 @@ REGIONS = {
         ("hook_a", build_enc_press_hook, (mm.ENC_PRESS_A_CONT, mm.ENC_PRESS_A_BAIL, UNLOCK_SENT)),
         ("hook_b", build_enc_press_hook, (mm.ENC_PRESS_B_CONT, mm.ENC_PRESS_B_BAIL, UNLOCK_SENT))]),
 }
+# Symbols that are POINTS INSIDE a routine rather than routines: (symbol,
+# routine, byte offset). build.py patches the sentinel with the address.
+INNER = {"bridge_cont": ("apply_bridge", 28)}
 
 HEADER = """| {name} -- midisc cave, emitted from tools/midisc/*.py by tools/gas_port.py.
 | DO NOT EDIT BY HAND: regenerate with `python3 tools/gas_port.py`, which also
@@ -277,6 +302,9 @@ def write_sources(built):
         text = HEADER.format(name=region)
         for name, _b, lines in routines:
             text += f"\n        .global {name}\n{name}:\n" + "\n".join(lines) + "\n"
+        for sym, (routine, disp) in INNER.items():
+            if any(name == routine for name, _, _ in routines):
+                text += f"\n        .global {sym}\n        .set {sym}, {routine} + {disp}\n"
         (OUT / f"{region}.s").write_text(text)
     (OUT / "msc.s").write_text(
         "| MSC -- 16 scenes x 8 tracks x 32 flat locks, one byte each; 0xff = no lock.\n"
@@ -300,6 +328,8 @@ def his_addresses(built):
             off += len(b)
     at.update({"msc": mm.MSC, "last_part": mm.LAST_PART, "unpack_src": mm.UNPACK_SRC,
                "last_bank": mm.LAST_BANK, "apply_ret": mm.APPLY_RET})
+    for sym, (routine, disp) in INNER.items():
+        at[sym] = at[routine] + disp
     return at
 
 
@@ -330,10 +360,32 @@ def assemble(src: pathlib.Path, at: int, defsyms: dict) -> bytes:
         return b.read_bytes()
 
 
+HIS_IMAGE = ROOT / "out" / "mainos_midisc40.bin"      # build.py's own output
+OS_BASE = 0x40000400
+
+
 def verify(built):
     at = his_addresses(built)
     want = his_bytes(built, at)
     ok = True
+    # The table above against build.py itself: when its image is on disk,
+    # every region's expected bytes must be exactly what build.py wrote at
+    # that base. Without the image this check is skipped, and says so.
+    if HIS_IMAGE.exists():
+        img = HIS_IMAGE.read_bytes()
+        for region, (base, _) in built.items():
+            got = img[base - OS_BASE: base - OS_BASE + len(want[region])]
+            if got != want[region]:
+                n = next((i for i, (x, y) in enumerate(zip(got, want[region])) if x != y),
+                         min(len(got), len(want[region])))
+                print(f"  {region:11s} TABLE STALE: build.py's image differs at +0x{n:x} "
+                      f"(got {got[n:n+8].hex()} want {want[region][n:n+8].hex()})")
+                ok = False
+        print(f"  region table checked against {HIS_IMAGE.name}: "
+              f"{'every region matches build.py' if ok else 'MISMATCH'}")
+    else:
+        print(f"  ({HIS_IMAGE.name} not on disk: table-vs-build.py check skipped -- "
+              f"run tools/build_midisc40.py first for the full proof)")
     for region, (base, routines) in built.items():
         local = {name for name, _, _ in routines}
         defs = {n: a for n, a in at.items() if n not in local}
