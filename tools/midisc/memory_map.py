@@ -32,14 +32,24 @@ LOCK_MAGIC_VAL = 0x4D53434C  # 'MSCL' — must not false-match DRAM junk
 LOCK_LAST_XF = LOCK_ENTS + LOCK_ENTS_MAX * LOCK_ENT_SIZE  # u8; 0xFF = force remix
 TRIG_SNAP = (LOCK_LAST_XF + 7) & ~3  # u8[8][32] raw trig layer for XF empty side
 TRIG_SNAP_STRIDE = 32
-# MIDI CONTROL CC enable flags (u32 0=ON/allow TX, 1=OFF/block). After TRIG_SNAP.
-# DRAM boots 0 → CCs ON / checked. Reboot persist TBD (PERSONALIZE A8/D8/DC tried;
-# did not survive on HW — do not claim). Never use 0x800000D4 (OS refs).
-FILT_CC48 = TRIG_SNAP + 8 * TRIG_SNAP_STRIDE  # XF CC48
-FILT_CC55 = FILT_CC48 + 4  # scene A CC55
-FILT_CC56 = FILT_CC55 + 4  # scene B CC56
+# MIDI CONTROL CC enable — packed byte @ CLIP+0xC80 (MIDISC8 CC48 slot).
+# Bits 0/1/2 = CC48/55/56 (0=ON/checked, 1=OFF). Project key MIDISC_CC_FILT.
+# Never 0x800000D4; PERSONALIZE A8/D8/DC failed on HW.
+FILT_CC48 = 0x460CA680
+FILT_BIT_CC48 = 0
+FILT_BIT_CC55 = 1
+FILT_BIT_CC56 = 2
+# Persist trampolines — D-region pads only (VOICE/RELOAD class).
+# Never ba8 pads (C1153/C14D5) or table zero-gaps (EC8BC/E6E5B).
+FILT_PERSIST_LOAD_CAVE = 0x400D347E
+FILT_PERSIST_LOAD_CAVE_END = 0x400D34CF  # 81B
+FILT_PERSIST_SAVE_CAVE = 0x400D352D
+FILT_PERSIST_SAVE_CAVE_END = 0x400D356F  # 66B
+FILT_PERSIST_CAVE = FILT_PERSIST_LOAD_CAVE
+FILT_PERSIST_CAVE_END = FILT_PERSIST_LOAD_CAVE_END
+# DRAM after TRIG_SNAP kept for KITS_GATE only.
 # Octakit: nonzero ⇒ bank_switch/invalidate skip part-set coupling (kits own it).
-KITS_GATE = FILT_CC56 + 4  # u8; boots 0 = stock bank↔part behaviour
+KITS_GATE = TRIG_SNAP + 8 * TRIG_SNAP_STRIDE + 12  # u8; boots 0 = stock bank↔part
 # Full MSC snapshot per window (Part Reload). Sparse CKPT alone rots after packs.
 MSC_CKPT = 0x460CB000  # 16 * 4096; below octakit boot temp
 MSC_CKPT_MAGIC = MSC_CKPT + 16 * 4096  # u32[16]; 'MSCK' when slot valid
@@ -132,8 +142,8 @@ RELOAD_CAVE_END = 0x400D3668
 SCENE_PASTE_CAVE = 0x400D3DA2
 SCENE_PASTE_CAVE_END = 0x400D3E38
 # Project-load: CKPT sparse → working (reload helper). Must live in a CODE cave
-# (CAVE2). Do NOT use 0x400C1153 — that zero pad sits inside a data table;
-# MIDISNi wrote code there and bricked on Part Reload.
+# (CAVE2). Do NOT use 0x400C1153 / 0x400C14D5 — ba8 data-table pads; code there
+# bricks (Part Reload / USB DISK MODE).
 SPARSE_CKPT_CAVE = 0x400C1153  # UNSAFE data-table pad — do not place code
 SPARSE_CKPT_CAVE_END = 0x400C121A
 
@@ -272,9 +282,9 @@ CAVE2_END = 0x400D3020
 STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
 SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
 OUT = ROOT / "out" / "mainos_midisc40.bin"
-VER = "1.40MDISC8"  # splash <=10
-DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC8.bin"
-GOLDEN = pathlib.Path.home() / "Desktop" / "1.40MIDISC68GOLDEN.bin"
+VER = "MIDISCN8.1"  # splash <=10; MIDISC8 without CC filter menu
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISCN8.1.bin"
+GOLDEN = pathlib.Path.home() / "Desktop" / "1.40MIDISC69GOLDEN.bin"  # unused; build skips golden
 
 # Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
 RELEASE_HOOK = 0x40054CB6

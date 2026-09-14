@@ -29,16 +29,19 @@ from .morph import (
 from .midi_filter import (
     CC_TX_HOOK,
     DRAW_SCROLL_HOOK,
+    ENABLE_FILT_PROJECT_PERSIST,
+    ENABLE_MIDI_CTRL_FILTER,
     FILTER_CAVE,
     FILTER_CAVE_END,
     LIST_INIT_COUNT_PEA,
+    LOAD_CHAIN_PEA,
+    SAVE_CC_OUT_MVS,
     SCROLL_CAVE,
     SCROLL_CAVE_END,
     SETTER_LEA_SITES,
     apply_midi_ctrl_filter,
     build_cc_tx_gate,
 )
-
 def main() -> None:
     stock = ensure_stock()
     img = bytearray(stock)
@@ -238,15 +241,20 @@ def main() -> None:
     c2 += build_scene_applied()
     abs_write_mix = CODE2 + len(c2)
     c2 += build_write_remixed()
-    abs_cc_gate = CODE2 + len(c2)
-    c2 += build_cc_tx_gate()
+    abs_cc_gate = 0
+    if ENABLE_MIDI_CTRL_FILTER:
+        abs_cc_gate = CODE2 + len(c2)
+        c2 += build_cc_tx_gate()
 
     if len(c2) > CODE2_END - CODE2:
         sys.exit(f"CODE2 overrun {len(c2)}")
 
     print(f"CODE2 {len(c2)} free {CODE2_END - CODE2 - len(c2)}")
     print(f"  after={abs_after:#x} apply={abs_apply:#x} reload={abs_reload:#x}")
-    print(f"  scene_done={abs_scene_done:#x} write_mix={abs_write_mix:#x} cc_gate={abs_cc_gate:#x}")
+    if abs_cc_gate:
+        print(f"  scene_done={abs_scene_done:#x} write_mix={abs_write_mix:#x} cc_gate={abs_cc_gate:#x}")
+    else:
+        print(f"  scene_done={abs_scene_done:#x} write_mix={abs_write_mix:#x} cc_gate=OFF")
 
     core = {
         "xf1": build_xf_after(XF_AFTER1_CONT, XF_AFTER1_STOCK),
@@ -454,7 +462,10 @@ def main() -> None:
     img[off(BANK_WR_INIT_B) : off(BANK_WR_INIT_B) + 6] = jsr_abs(abs_bank_inv)
     img[off(AFTER_PROJECT_LOAD) : off(AFTER_PROJECT_LOAD) + 6] = jsr_abs(abs_after_proj)
 
-    apply_midi_ctrl_filter(img, abs_cc_gate)
+    if ENABLE_MIDI_CTRL_FILTER:
+        apply_midi_ctrl_filter(img, abs_cc_gate)
+    else:
+        print("MIDI CONTROL filter OFF (stock 4-row CONTROL, stock CC_TX)")
 
     save_all_lea = bytes.fromhex("45f94004a908")
     if bytes(img[off(SAVE_ALL) + 4 : off(SAVE_ALL) + 10]) != save_all_lea:
@@ -472,14 +483,20 @@ def main() -> None:
         (off(VOICE_RELOAD_CAVE), off(VOICE_RELOAD_CAVE) + len(voice_rel_b)),
         (off(CAVE2), off(CAVE2) + len(c2b)),
         (off(SEAM_CAVE), off(SEAM_CAVE) + len(seam)),
-        (off(FILTER_CAVE), off(FILTER_CAVE_END)),
-        (off(SCROLL_CAVE), off(SCROLL_CAVE_END)),
-        (off(CC_TX_HOOK), off(CC_TX_HOOK) + 6),
-        (off(DRAW_SCROLL_HOOK), off(DRAW_SCROLL_HOOK) + 6),
-        (off(0x40068392), off(0x40068392) + 4),
-        (off(0x4006839E), off(0x4006839E) + 4),
-        (off(LIST_INIT_COUNT_PEA), off(LIST_INIT_COUNT_PEA) + 4),
-        *[(off(s + 2), off(s + 2) + 4) for s in SETTER_LEA_SITES],
+        *([(off(FILTER_CAVE), off(FILTER_CAVE_END)),
+           (off(SCROLL_CAVE), off(SCROLL_CAVE_END)),
+           (off(CC_TX_HOOK), off(CC_TX_HOOK) + 6),
+           (off(DRAW_SCROLL_HOOK), off(DRAW_SCROLL_HOOK) + 6),
+           (off(0x40068392), off(0x40068392) + 4),
+           (off(0x4006839E), off(0x4006839E) + 4),
+           (off(LIST_INIT_COUNT_PEA), off(LIST_INIT_COUNT_PEA) + 4),
+           *[(off(s + 2), off(s + 2) + 4) for s in SETTER_LEA_SITES]]
+          if ENABLE_MIDI_CTRL_FILTER else []),
+        *([(off(FILT_PERSIST_LOAD_CAVE), off(FILT_PERSIST_LOAD_CAVE_END)),
+           (off(FILT_PERSIST_SAVE_CAVE), off(FILT_PERSIST_SAVE_CAVE_END)),
+           (off(LOAD_CHAIN_PEA), off(LOAD_CHAIN_PEA) + 6),
+           (off(SAVE_CC_OUT_MVS), off(SAVE_CC_OUT_MVS) + 6)]
+          if ENABLE_MIDI_CTRL_FILTER and ENABLE_FILT_PROJECT_PERSIST else []),
         (off(0x400D7C3C), off(0x400D7C50)),
         (off(LAST_PART), off(APPLY_RET) + 4),
         *[(off(s), off(s) + 6) for s in APPLY_UI_JSR],
@@ -677,10 +694,7 @@ def main() -> None:
     if r.returncode:
         sys.exit("repack failed")
 
-    GOLDEN.write_bytes(DESKTOP.read_bytes())
-
     print(f"Flash: {DESKTOP} ({VER})")
-    print(f"Golden: {GOLDEN}")
     print(f"  SAFE_CAVE={SAFE_CAVE:#x} CAVE2={CAVE2:#x} xf_mix={abs_xf_mix:#x} morph={abs_morph:#x}")
     print(f"  CLIP={CLIP:#x}; CODE2={CODE2:#x}")
     print(f"  stubs {[f'{k}={v:#x}' for k, v in addrs.items()]}")

@@ -216,23 +216,11 @@ with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
 
 ---
 
-## MIDI CONTROL — CC48 / CC55 / CC56 (working)
+## MIDI CONTROL — CC48 / CC55 / CC56 (**on hold**)
 
-MIDI → **CONTROL** adds three rows after AUDIO NOTE OUT (`tools/midisc/midi_filter.py`).
-
-| UI | Meaning |
-|----|---------|
-| Checked (default) | that CC is **ON** (TX allowed) |
-| Unchecked | that CC is **OFF** (TX blocked) |
-
-Still gated by stock AUDIO CC OUT. Setters use PERSONALIZE ABI
-`(flag + delta) & 1` (YES passes delta +1 on `4(sp)`).
-
-| | |
-|--|--|
-| Flags | DRAM after `TRIG_SNAP` (`FILT_CC48/55/56`) — never `0x800000xx` |
-| Gate | `FUN_40033e3c` @ `0x40033E5A` — enter with **jmp** only (jsr bricks LFO) |
-| Scroll | draw hook `0x4006838A` → `SCROLL_CAVE` (peas alone do not scroll) |
+Not in **1.40MIDISCN8.1** (`ENABLE_MIDI_CTRL_FILTER = False`).
+Stock 4-row CONTROL / stock CC_TX. Persist caves previously bricked Project Save;
+see `tools/midisc/PERSIST_PLAN.md` / `NEXT_SESSION.md`.
 
 ---
 

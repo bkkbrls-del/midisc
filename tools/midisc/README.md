@@ -1,7 +1,9 @@
 # midisc package
 
-Patch sources for golden **1.40MIDISC8** on OS 1.40C (splash `1.40MDISC8`).
-Desktop: `1.40MIDISC8.bin` + `1.40MIDISC68GOLDEN.bin`.
+Patch sources for **1.40MIDISCN8.1** on OS 1.40C (splash `MIDISCN8.1`).
+Desktop: `1.40MIDISCN8.1.bin` (no golden).
+
+MIDISC8 scenes + Part lifecycle. CC48/55/56 CONTROL filter **on hold**.
 
 ```bash
 python tools/build_midisc40.py

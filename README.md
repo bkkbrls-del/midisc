@@ -1,11 +1,11 @@
-# midisc — `1.40MIDISC8`
+# midisc — `1.40MIDISCN8.1`
 
 ColdFire patch that adds **MIDI scene locks** to official Octatrack **OS 1.40C**.
 
 There is **no prebuilt firmware in this repo**. Rebuild from your own 1.40C
 (same extract → patch MAIN OS → repack path used by octabam-style tooling),
 or use the browser patcher:
-**https://bkkbrls-del.github.io/midisc-patcher/** (frozen golden `1.40MIDISC8`).
+**https://bkkbrls-del.github.io/midisc-patcher/**
 
 ## Behaviour
 
@@ -13,8 +13,6 @@ or use the browser patcher:
 - Empty XF side uses the trig layer when a step is locked, else machine behind
 - Full A / full B: scene-locked flats are absolute (step locks not heard on that end)
 - Mid-XF: continuous lerp without re-stamping the LFO row every trig (no step jumps)
-- MIDI → **CONTROL**: CC48 / CC55 / CC56 ticks — checked (default) = ON, unchecked = OFF
-  (session DRAM; reboot persist TODO)
 - Part Save parks a freeze twin; edits survive reboot; Part Reload restores that freeze
 - Part Yes applies MIDI scenes immediately (apply bridge + xf_mix)
 - Part Paste stays on the current part (stock APPLY_WAIT_BNE)
@@ -25,6 +23,7 @@ or use the browser patcher:
 - Full scene B: CTRL CC locks stay frozen on dial (CC_TX uses mixed VOICE)
 - Solid green scene-lock LEDs (no blink path)
 - ARP scene-lock values clamped to real knob ranges
+- MIDI CONTROL CC48/55/56 filter menu: **on hold** (not in this build)
 
 Shipped map: **`tools/midisc/HANDOFF.md`**. Technical map: **`docs/TECH.md`**.  
 Constants: `tools/midisc/memory_map.py`.
@@ -47,8 +46,8 @@ Pipeline inside the build:
 1. `ensure_stock()` — use `out/raw/section_3_MAIN_OS.bin` if present, else
    extract from `downloads/extracted/OCTATRACK_OS1.40C.syx`
 2. Assemble caves/stubs (`tools/midisc/*.py` + `ot3_asm.py`) and splice hooks
-3. `tools/repack_140fx.py` → Desktop **`1.40MIDISC8.bin`** (splash `1.40MDISC8`, ≤10 chars)
-   (+ syx under `out/`; golden copy `1.40MIDISC68GOLDEN.bin`)
+3. `tools/repack_140fx.py` → Desktop **`1.40MIDISCN8.1.bin`** (splash `MIDISCN8.1`, ≤10 chars)
+   (+ syx under `out/`; no golden copy)
 
 Optional (octabam compose): `python3 tools/gas_port.py` regenerates `gas/*.s` and
 proves byte-identity (needs `m68k-elf-binutils`).
@@ -64,7 +63,7 @@ Then flash **that build’s** `.bin` (CF root → OS UPGRADE). Details:
 | `tools/midisc/hold.py` | A/B hold store, dial, unlock, ARP clamp |
 | `tools/midisc/parts.py` | pack/unpack, save/reload, bank, `part_window` seam |
 | `tools/midisc/morph.py` | XF mix / morph / plock / write remix + VOICE→d2 |
-| `tools/midisc/midi_filter.py` | MIDI CONTROL CC48/55/56 enable ticks |
+| `tools/midisc/midi_filter.py` | MIDI CONTROL CC48/55/56 (disabled / on hold) |
 | `tools/midisc/scene_ui.py` | clear / copy / paste |
 | `tools/midisc/emit.py` | shared MSC helpers |
 | `tools/midisc/memory_map.py` | all 1.40C addresses |
