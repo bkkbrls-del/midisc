@@ -5,9 +5,11 @@ Desktop: `1.40MIDISC8.bin` + `1.40MIDISC68GOLDEN.bin`.
 
 ```bash
 python tools/build_midisc40.py
+# or: $env:PYTHONPATH="tools"; python -m tools.midisc.build
 ```
 
-Needs your own 1.40C. See root README + `docs/TECH.md` + `docs/FLASHING.md`.
+Needs your own 1.40C. Browser patcher: https://bkkbrls-del.github.io/midisc-patcher/  
+See root README + `HANDOFF.md` + `docs/TECH.md` + `docs/FLASHING.md`.
 
 | file | role |
 |------|------|
