@@ -218,9 +218,19 @@ with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
 
 ## MIDI CONTROL — CC48 / CC55 / CC56 (**on hold**)
 
-Not in **1.40MIDISCN8.1** (`ENABLE_MIDI_CTRL_FILTER = False`).
+Not in this build (`ENABLE_MIDI_CTRL_FILTER = False`).
 Stock 4-row CONTROL / stock CC_TX. Persist caves previously bricked Project Save;
 see `tools/midisc/PERSIST_PLAN.md` / `NEXT_SESSION.md`.
+
+## MIDI CHAN T1–T8 internal route (`1.40MIDISC8.2`)
+
+NOTE SETUP `CHAN` count 25 (`OFF`, `1`–`16`, `T1`–`T8`). Formatter at cave
+replaces `0x4003c770`. When `CHAN` ≥ 17, note TX / `CC_TX` set a DRAM flag and
+fake external ch1 for buffer build; `FUN_40010bc8` injects into
+`0x4000e018` / `0x4000db98` / `0x4000e79c` with TRIG CH forced to that audio
+track. Route rebuild treats `CHAN` > 16 as off for the MIDI nibble table.
+See `tools/midisc/midi_route.py`.
+
 
 ---
 

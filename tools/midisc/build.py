@@ -42,6 +42,19 @@ from .midi_filter import (
     apply_midi_ctrl_filter,
     build_cc_tx_gate,
 )
+from .midi_route import (
+    ENABLE_MIDI_T_ROUTE,
+    INJECT_CAVE,
+    REBUILD_CHAN_HOOK,
+    ROUTE_CAVE,
+    ROUTE_CAVE_END,
+    UART_SEND,
+    apply_midi_t_route,
+    CC_CHAN_HOOK,
+    CHAN_COUNT_ADDR,
+    CHAN_FMT_PTR,
+    NOTE_CHAN_HOOK,
+)
 def main() -> None:
     stock = ensure_stock()
     img = bytearray(stock)
@@ -467,6 +480,12 @@ def main() -> None:
     else:
         print("MIDI CONTROL filter OFF (stock 4-row CONTROL, stock CC_TX)")
 
+    route_addrs = apply_midi_t_route(img)
+    if route_addrs:
+        print(f"MIDI CHAN T1–T8 route ON ({route_addrs.get('cave_len', 0)}B)")
+    elif ENABLE_MIDI_T_ROUTE:
+        sys.exit("MIDI T-route enabled but apply returned empty")
+
     save_all_lea = bytes.fromhex("45f94004a908")
     if bytes(img[off(SAVE_ALL) + 4 : off(SAVE_ALL) + 10]) != save_all_lea:
         sys.exit(f"SAVE_ALL lea mismatch: {bytes(img[off(SAVE_ALL)+4:off(SAVE_ALL)+10]).hex()}")
@@ -492,6 +511,15 @@ def main() -> None:
            (off(LIST_INIT_COUNT_PEA), off(LIST_INIT_COUNT_PEA) + 4),
            *[(off(s + 2), off(s + 2) + 4) for s in SETTER_LEA_SITES]]
           if ENABLE_MIDI_CTRL_FILTER else []),
+        *([(off(ROUTE_CAVE), off(ROUTE_CAVE) + route_addrs["cave_len"]),
+           (off(INJECT_CAVE), off(INJECT_CAVE) + route_addrs["inject_len"]),
+           (off(CHAN_COUNT_ADDR), off(CHAN_COUNT_ADDR) + 4),
+           (off(CHAN_FMT_PTR), off(CHAN_FMT_PTR) + 4),
+           (off(NOTE_CHAN_HOOK), off(NOTE_CHAN_HOOK) + 6),
+           (off(CC_CHAN_HOOK), off(CC_CHAN_HOOK) + 6),
+           (off(REBUILD_CHAN_HOOK), off(REBUILD_CHAN_HOOK) + 6),
+           (off(UART_SEND), off(UART_SEND) + 6)]
+          if route_addrs else []),
         *([(off(FILT_PERSIST_LOAD_CAVE), off(FILT_PERSIST_LOAD_CAVE_END)),
            (off(FILT_PERSIST_SAVE_CAVE), off(FILT_PERSIST_SAVE_CAVE_END)),
            (off(LOAD_CHAIN_PEA), off(LOAD_CHAIN_PEA) + 6),
