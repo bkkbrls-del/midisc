@@ -13,7 +13,11 @@ from ot3_asm import Asm
 from .memory_map import CLIP
 from .util import jmp_abs, off
 
-ENABLE_MIDI_T_ROUTE = True
+ENABLE_MIDI_T_ROUTE = False  # HW brick on encoder/trig (2026-09-15); keep code, do not enable
+
+# HW report (disabled build): bricks on encoder turns and trigs. NOTE SETUP T1–T8
+# draw wrong; main UI shows CH:17 for T1 (separate formatter, not CHAN_FMT_PTR).
+# Suspects: UART_SEND trampoline / rebuild hook / inject @ 0x4010C350.
 
 NOTE_E = 0x400D3E06
 CHAN_COUNT_ADDR = NOTE_E + 0xD2 + 6 * 4
