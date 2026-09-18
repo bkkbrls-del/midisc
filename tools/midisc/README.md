@@ -1,7 +1,7 @@
 # midisc package
 
-Patch sources for **1.40MIDISCN8.1** on OS 1.40C (splash `MIDISCN8.1`).
-Desktop: `1.40MIDISCN8.1.bin` (no golden).
+Patch sources for **1.40MIDISC8.1** on OS 1.40C (splash `1.40MDIS81`).
+Desktop: `1.40MIDISC8.1.bin`.
 
 MIDISC8 scenes + Part lifecycle. CC48/55/56 CONTROL filter **on hold**.
 

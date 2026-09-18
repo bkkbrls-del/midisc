@@ -1,6 +1,6 @@
-# Persist investigation (no build) — from MIDISC8 golden
+# Persist investigation (no build) — from 1.40MIDISC8
 
-**Base:** `c:\Users\l\Desktop\GOLDEN SUNDAY\1.40MIDISC8.bin` (unpacked OK)  
+**Base:** `1.40MIDISC8.bin` (unpacked OK)  
 **Goal:** CC48/55/56 ticks retain **UI + TX** across Project Save + reboot, without YES/USB/scroll bricks.  
 **Status:** report only — not built.
 
@@ -41,7 +41,7 @@ Reboot persist **did** work when hooks ran (9) — the problem was **where** the
 
 ### Why this is the safest of the options that can actually persist
 
-- Live path stays byte-identical to golden 8 → no CC48 scroll regression from getter rewrites.
+- Live path stays byte-identical to 1.40MIDISC8 → no CC48 scroll regression from getter rewrites.
 - Trampolines only in **D-region CODE pads** + FILTER island already used by midisc — not ba8 / table gaps.
 - File format matches how Elektron already persists AUDIO CC (text settings key).
 

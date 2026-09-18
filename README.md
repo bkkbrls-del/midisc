@@ -1,4 +1,4 @@
-# midisc — `1.40MIDISCN8.1`
+# midisc — `1.40MIDISC8.1`
 
 ColdFire patch that adds **MIDI scene locks** to official Octatrack **OS 1.40C**.
 
@@ -46,8 +46,8 @@ Pipeline inside the build:
 1. `ensure_stock()` — use `out/raw/section_3_MAIN_OS.bin` if present, else
    extract from `downloads/extracted/OCTATRACK_OS1.40C.syx`
 2. Assemble caves/stubs (`tools/midisc/*.py` + `ot3_asm.py`) and splice hooks
-3. `tools/repack_140fx.py` → Desktop **`1.40MIDISCN8.1.bin`** (splash `MIDISCN8.1`, ≤10 chars)
-   (+ syx under `out/`; no golden copy)
+3. `tools/repack_140fx.py` → Desktop **`1.40MIDISC8.1.bin`** (splash `1.40MDIS81`, ≤10 chars)
+   (+ syx under `out/`; Desktop bin only)
 
 Optional (octabam compose): `python3 tools/gas_port.py` regenerates `gas/*.s` and
 proves byte-identity (needs `m68k-elf-binutils`).

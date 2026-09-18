@@ -282,9 +282,8 @@ CAVE2_END = 0x400D3020
 STOCK = ROOT / "out" / "raw" / "section_3_MAIN_OS.bin"
 SYX = ROOT / "downloads" / "extracted" / "OCTATRACK_OS1.40C.syx"
 OUT = ROOT / "out" / "mainos_midisc40.bin"
-VER = "MIDISCN8.1"  # splash <=10; MIDISC8 without CC filter menu
-DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISCN8.1.bin"
-GOLDEN = pathlib.Path.home() / "Desktop" / "1.40MIDISC69GOLDEN.bin"  # unused; build skips golden
+VER = "1.40MDIS81"  # splash <=10; marketing name 1.40MIDISC8.1
+DESKTOP = pathlib.Path.home() / "Desktop" / "1.40MIDISC8.1.bin"
 
 # Scene pad release: clr held flags, then xf_mix at current XF (midi45 site)
 RELEASE_HOOK = 0x40054CB6

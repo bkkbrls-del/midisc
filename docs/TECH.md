@@ -218,7 +218,7 @@ with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
 
 ## MIDI CONTROL — CC48 / CC55 / CC56 (**on hold**)
 
-Not in **1.40MIDISCN8.1** (`ENABLE_MIDI_CTRL_FILTER = False`).
+Not in **1.40MIDISC8.1** (`ENABLE_MIDI_CTRL_FILTER = False`).
 Stock 4-row CONTROL / stock CC_TX. Persist caves previously bricked Project Save;
 see `tools/midisc/PERSIST_PLAN.md` / `NEXT_SESSION.md`.
 
