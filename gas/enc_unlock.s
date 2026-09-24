@@ -25,12 +25,6 @@ unlock:
         sub.l %d0,%d5
         add.l %d3,%d5
         andi.l #0x1f,%d5
-        mvz.b (last_part).l,%d0
-        mvz.b (0x100b14cf).l,%d1
-        .byte 0xb0, 0x81
-        beq.w .Lunlock_ul_sync
-        jsr (unpack).l
-.Lunlock_ul_sync:
         move.l (0x460d169c).l,%d2
         mvz.b (0x100b14cf).l,%d0
         move.l #0x18b2,%d3
@@ -62,9 +56,9 @@ unlock:
         move.b %d0,(last_part).l
         jsr (pack).l
         jsr (dirty).l
-        .byte 0x42, 0xb9, 0x46, 0x0c, 0x9e, 0x44
+        .byte 0x42, 0xb9, 0x46, 0x0c, 0xa5, 0x04
         moveq #-1,%d0
-        move.b %d0,(0x460c9eb9).l
+        move.b %d0,(0x460ca579).l
         jsr (xf_mix).l
         .byte 0x48, 0x78, 0xff, 0xff
         jsr (0x4004d948).l
