@@ -550,12 +550,17 @@ def build_xf_mix_out() -> bytes:
     a.pop("d7", "d6", "d5", "d2", "d1")
 
     a.label("ctrl")
-    # Scene-locked flats: same value to LFO so XF offsets trigs instantly
+    # Scene-locked flats: same value to LFO so XF offsets trigs instantly.
+    # a2/a3 are scene bases only — index track*32+param (not param alone),
+    # else MIDI track-1 locks paint LFO on every track.
     a.move_a_d(2, 0)
     a.tst_d(0)
     a.beq("lb")
+    a.move_l_dd(6, 3)
+    a.lsl(5, 3)
+    a.add_dd(1, 3)
     a.hex("204A")
-    a.adda_d(1, 0)
+    a.adda_d(3, 0)
     a.mvz_b_ind(0, 0)
     a.cmpi(0xFF, 0)
     a.bne("wl")
@@ -563,8 +568,11 @@ def build_xf_mix_out() -> bytes:
     a.move_a_d(3, 0)
     a.tst_d(0)
     a.beq("nxc")
+    a.move_l_dd(6, 3)
+    a.lsl(5, 3)
+    a.add_dd(1, 3)
     a.hex("204B")
-    a.adda_d(1, 0)
+    a.adda_d(3, 0)
     a.mvz_b_ind(0, 0)
     a.cmpi(0xFF, 0)
     a.beq("nxc")
@@ -711,27 +719,17 @@ def build_voice_reload_d2() -> bytes:
 
 
 def build_write_remixed() -> bytes:
+    """After MIDI live write: re-apply scene x XF so locks win / XF holds.
 
-    """After unlocked MIDI live write: re-apply scene x XF so locks win / XF holds.
-
-
-
-    Then reload d2 from VOICE so stock CC_TX uses the mixed lock (MIDISC5).
+    Keep encoder d2 through to stock CC_TX / apply — do not reload VOICE into
+    d2 (that left unlocked params silent / stuck on the old CC).
 
     No MIDI_FLAG gate — keep morph sinks live while UI is on audio.
-
     """
-
     a = Asm()
-
     a.hex(WRITE_STOCK)
-
     a.jsr(SENT_XF_MIX)
-
-    a.jsr(SENT_VOICE_RELOAD)
-
     a.jmp(WRITE_CONT)
-
     return a.link()
 
 

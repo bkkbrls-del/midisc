@@ -1,12 +1,13 @@
-# midisc 1.40MIDISC8.1
+# midisc 1.40MIDISC8.2
 
-**Flash:** `~/Desktop/1.40MIDISC8.1.bin`  
-**Splash:** `1.40MDIS81`  
+**Flash:** `~/Desktop/1.40MIDISC8.2.bin`  
+**Splash:** `1.40MDIS82`  
 **Rebuild:** `$env:PYTHONPATH="tools"; python -m tools.midisc.build`
 
-MIDISC8 feature set **without** CC48/55/56 MIDI CONTROL filter.
-`ENABLE_MIDI_CTRL_FILTER = False` — stock 4-row CONTROL, stock CC_TX.
-CC filter work is **on hold** (persist caves bricked Project Save / YES).
+## vs 1.40MIDISC8.1
 
-Everything else (scenes, Part Save/Reload/Yes/Paste, etc.) unchanged.
-Desktop bin only.
+1. Track-1 scene locks isolated (`xf_mix` LFO probes use `track*32+param`).
+2. Unlocked params send CC again (no `voice_reload` into `d2` on write).
+
+Otherwise same as 8.1: MIDISC8 scenes + Part lifecycle, no CC48/55/56 filter
+(`ENABLE_MIDI_CTRL_FILTER = False`). Desktop bin only.

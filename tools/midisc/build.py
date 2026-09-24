@@ -333,8 +333,9 @@ def main() -> None:
     n2 += fix_jsr(c2, SENT_UNPACK, addrs["unpack"])
     n2 += fix_jsr(c2, SENT_XF_MIX, abs_xf_mix)
     n2 += fix_jsr(c2, SENT_REBUILD_MASK, addrs["rebuild"])  # expect 0
-    if fix_jsr(c2, SENT_VOICE_RELOAD, abs_voice_rel) != 1:
-        sys.exit("CODE2 missing voice_reload")
+    # 8.2: write_remixed no longer calls voice_reload (unlocked CC keeps d2).
+    if fix_jsr(c2, SENT_VOICE_RELOAD, abs_voice_rel) != 0:
+        sys.exit("CODE2 unexpected voice_reload")
     if n2 < 2:
         sys.exit(f"CODE2 sentinel miss ({n2})")
 

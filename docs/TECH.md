@@ -1,9 +1,9 @@
-# midisc technical map (`1.40MIDISCc`)
+# midisc technical map (`1.40MIDISC8.2`)
 
 Facts the shipped patch relies on. Base image: stock **1.40C** MAIN OS
 (`BASE = 0x40000400`). All addresses in `tools/midisc/memory_map.py`.
 
-Splash field is <=10 chars: **`1.40MDISCc`**. Flash filename: **`1.40MIDISCc.bin`**.
+Splash field is <=10 chars: **`1.40MDIS82`**. Flash filename: **`1.40MIDISC8.2.bin`**.
 
 ---
 
@@ -116,8 +116,8 @@ pure-end body in `CAVE2` via `SENT_REBUILD_MASK`):
 Morph-rate path (`MORPH_EXIT` → `build_morph` in `SAFE_CAVE`) ensures MSC presence
 only. It must **not** call `xf_mix` (rate-matched mix starves trig playback).
 
-`WRITE_HOOK` / unheld apply: remix into VOICE, then `build_voice_reload_d2` so
-stock `CC_TX` (`0x4009EEC8`) uses the mixed value (full-B CTRL CC freeze).
+`WRITE_HOOK` / unheld apply: remix into VOICE, then continue with encoder `d2`
+(8.2 — no `voice_reload`; unlocked CC must keep the dial value).
 
 ---
 
@@ -193,16 +193,16 @@ after publish (wipes MSC).
 
 ---
 
-## Full-B CTRL CC lock freeze (working)
+## Unlocked CTRL CC + track isolation (8.2)
 
-Unheld MIDI apply writes behind (`8f162`), then `write_remixed` runs `xf_mix`
-into `MIDI_VOICE` only. Stock then `CC_TX` (`0x4009EEC8`) still used dialed
-`d2` -- at full scene B a B-locked CTRL CC looked locked but still transmitted.
+**8.1 bug A:** `xf_mix` LFO lock probes used `MSC[scene]+param` (no track×32),
+so MIDI track-1 locks affected other tracks’ LFO flats.
 
-After `xf_mix`, `build_voice_reload_d2` sets `d2` from
-`MIDI_VOICE[track*0x44+flat]` so `CC_TX` / SOUND mirrors use the mix. Mid-XF
-with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
-`CC_TX`.
+**8.1 bug B:** after `xf_mix`, `build_voice_reload_d2` overwrote dial `d2` from
+`MIDI_VOICE` before stock `CC_TX`. Unlocked params stayed silent / stuck.
+
+**8.2:** LFO probes use `track*32+param`; write remix skips voice→d2 reload.
+`VOICE_RELOAD_CAVE` remains in the image but is unused on the write path.
 
 `WRITE_HOOK` must cover **8** bytes (`WRITE_CONT = 0x40055392`). Cont
 `0x40055390` / LEN 6 landed inside `move.l #0x18b2` immediate.
@@ -218,7 +218,7 @@ with empty A still morphs (VOICE is the lerp). Other MIDI pages do not take
 
 ## MIDI CONTROL — CC48 / CC55 / CC56 (**on hold**)
 
-Not in **1.40MIDISC8.1** (`ENABLE_MIDI_CTRL_FILTER = False`).
+Not in **1.40MIDISC8.2** (`ENABLE_MIDI_CTRL_FILTER = False`).
 Stock 4-row CONTROL / stock CC_TX. Persist caves previously bricked Project Save;
 see `tools/midisc/PERSIST_PLAN.md` / `NEXT_SESSION.md`.
 
@@ -251,5 +251,5 @@ Do not force-push `main` — octabam pins midisc commits.
 ## Build / flash reminder
 
 `python tools/build_midisc40.py` produces **your** `1.40MIDISCc.bin` from **your**
-1.40C (splash `1.40MDISCc`). Do not redistribute that binary. Flash/recovery:
+1.40C (splash `1.40MDIS82`). Do not redistribute that binary. Flash/recovery:
 `docs/FLASHING.md`.

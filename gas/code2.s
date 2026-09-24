@@ -81,5 +81,4 @@ scene_done:
 write_mix:
         .byte 0x1a, 0x82, 0x22, 0x3c, 0x00, 0x00, 0x18, 0xb2
         jsr (xf_mix).l
-        jsr (voice_rel).l
         jmp (0x40055392).l

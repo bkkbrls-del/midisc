@@ -1,7 +1,11 @@
 # midisc package
 
-Patch sources for **1.40MIDISC8.1** on OS 1.40C (splash `1.40MDIS81`).
-Desktop: `1.40MIDISC8.1.bin`.
+Patch sources for **1.40MIDISC8.2** on OS 1.40C (splash `1.40MDIS82`).
+Desktop: `1.40MIDISC8.2.bin`.
+
+### vs 8.1
+- Track-1 lock isolation (`track*32+param` in `xf_mix` LFO probes)
+- Unlocked param CC (no voice→d2 reload on write)
 
 MIDISC8 scenes + Part lifecycle. CC48/55/56 CONTROL filter **on hold**.
 
