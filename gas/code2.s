@@ -51,32 +51,3 @@ write_mix:
         .byte 0x1a, 0x82, 0x22, 0x3c, 0x00, 0x00, 0x18, 0xb2
         jsr (xf_mix).l
         jmp (0x40055392).l
-
-        .global cc_gate
-cc_gate:
-        cmpi.l #0x30,%d3
-        beq.w .Lcc_gate_c48
-        cmpi.l #0x37,%d3
-        beq.w .Lcc_gate_c55
-        cmpi.l #0x38,%d3
-        beq.w .Lcc_gate_c56
-.Lcc_gate_pass:
-        moveq #8,%d0
-        .byte 0xb0, 0x81
-        beq.w .Lcc_gate_eq8
-        jmp (0x40033ea4).l
-.Lcc_gate_eq8:
-        jmp (0x40033e60).l
-.Lcc_gate_c48:
-        tst.l (0x460ca680).l
-        beq.w .Lcc_gate_pass
-        bra.w .Lcc_gate_block
-.Lcc_gate_c55:
-        tst.l (0x460ca684).l
-        beq.w .Lcc_gate_pass
-        bra.w .Lcc_gate_block
-.Lcc_gate_c56:
-        tst.l (0x460ca688).l
-        beq.w .Lcc_gate_pass
-.Lcc_gate_block:
-        jmp (0x40033f24).l

@@ -203,7 +203,7 @@ from midisc.parts import (  # noqa: E402
     build_bank_switch, build_after_project_load, build_bank_publish, build_clear_part,
     build_dirty, build_freeze_alt_to_working, build_pack, build_part_window,
     build_reload_after, build_reload_ui, build_save_ui, build_unpack)
-from midisc.midi_filter import build_cc_tx_gate  # noqa: E402
+from midisc.midi_filter import ENABLE_MIDI_CTRL_FILTER, build_cc_tx_gate  # noqa: E402
 from midisc.hold import (  # noqa: E402
     build_addi_d0, build_addi_d1, build_dial, build_enc_press_hook, build_enc_unlock,
     build_hold_store, build_press_refresh, build_scene_lock_clamp)
@@ -245,8 +245,9 @@ REGIONS = {
     "code2": (mm.CODE2, [
         ("after", build_after_apply, ()), ("apply", build_apply_wrap, (AFTER_SENT,)),
         ("reload", build_reload_ui, (REL_AFTER_SENT,)),
-        ("scene_done", build_scene_applied, ()), ("write_mix", build_write_remixed, ()),
-        ("cc_gate", build_cc_tx_gate, ())]),
+        ("scene_done", build_scene_applied, ()), ("write_mix", build_write_remixed, ())]
+        # build.py links cc_gate into CODE2 only while the CONTROL filter is on.
+        + ([("cc_gate", build_cc_tx_gate, ())] if ENABLE_MIDI_CTRL_FILTER else [])),
     "scene_paste": (mm.SCENE_PASTE_CAVE, [("pst_sc", build_paste_scene, (mm.CLIP,))]),
     "stub": (mm.STUB, [
         ("xf1", build_xf_after, (mm.XF_AFTER1_CONT, mm.XF_AFTER1_STOCK)),

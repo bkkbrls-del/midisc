@@ -527,8 +527,11 @@ xf_mix:
         move.l %a2,%d0
         tst.l %d0
         beq.w .Lxf_mix_lb
+        move.l %d6,%d3
+        lsl.l #5,%d3
+        add.l %d1,%d3
         .byte 0x20, 0x4a
-        adda.l %d1,%a0
+        adda.l %d3,%a0
         mvz.b (%a0),%d0
         cmpi.l #0xff,%d0
         bne.w .Lxf_mix_wl
@@ -536,8 +539,11 @@ xf_mix:
         move.l %a3,%d0
         tst.l %d0
         beq.w .Lxf_mix_nxc
+        move.l %d6,%d3
+        lsl.l #5,%d3
+        add.l %d1,%d3
         .byte 0x20, 0x4b
-        adda.l %d1,%a0
+        adda.l %d3,%a0
         mvz.b (%a0),%d0
         cmpi.l #0xff,%d0
         beq.w .Lxf_mix_nxc
