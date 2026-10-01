@@ -1,94 +1,40 @@
-# midisc ‚Äî `1.40MIDISC8.2`
+# midisc ó `MIDISC2.0`
 
 ColdFire patch that adds **MIDI scene locks** to official Octatrack **OS 1.40C**.
 
-There is **no prebuilt firmware in this repo**. Rebuild from your own 1.40C
-(same extract ‚Üí patch MAIN OS ‚Üí repack path used by octabam-style tooling),
-or use the browser patcher:
-**https://bkkbrls-del.github.io/midisc-patcher/**
+There is **no prebuilt firmware in this repo**. Rebuild from your own 1.40C.
 
-## Changes from `1.40MIDISC8.1`
+Browser patcher (still 8.2 until updated):  
+https://bkkbrls-del.github.io/midisc-patcher/
 
-Only these two fixes ‚Äî everything else is unchanged from 8.1:
+## Changes from `1.40MIDISC8.2`
 
-1. **MIDI track-1 scene locks no longer bleed to other tracks** ‚Äî `xf_mix` LFO
-   lock probes index `scene[track*32+param]` (was `scene[param]`).
-2. **Unlocked parameters play / send CC again** ‚Äî write path keeps encoder `d2`
-   through stock `CC_TX` (no longer reloads `d2` from `MIDI_VOICE` after mix).
+1. **No first trig needed** ó scenes / XF work before playback starts.
+2. **Timing** ó scene changes land at the real queued pattern / Part boundary; manual Part confirm is immediate.
+3. **Active trig locks hold** ó an unscened lock (including ARP OFF?ON) survives scene/XF refresh until the native lock ends.
+4. **CC before notes** ó native CC values go out before same-track note-ons.
+5. **Crash fixes** ó FUNC+REC2 and master-track descriptor repairs; scene scratch kept off native clipboards.
 
-## Behaviour (same as 8.1, plus the fixes above)
+Everything else from 8.2 stays (track◊32 isolation, unlocked CC path, Part save/reload freeze, etc.).
 
-- MIDI track scene A/B locks + XF morph between scenes and step plocks
-- Empty XF side uses the trig layer when a step is locked, else machine behind
-- Full A / full B: scene-locked flats are absolute (step locks not heard on that end)
-- Mid-XF: continuous lerp without re-stamping the LFO row every trig (no step jumps)
-- Part Save parks a freeze twin; edits survive reboot; Part Reload restores that freeze
-- Part Yes applies MIDI scenes immediately (apply bridge + xf_mix)
-- Part Paste stays on the current part (stock APPLY_WAIT_BNE)
-- Project save/reload keeps locks (all parts); bank load keeps machine regs
-- Site B bank publish does **not** pack (avoids durable SAVE mid bank-load)
-- `STOCK_APPLY` left stock (compose-friendly with Octakit; avoids project-load hang)
-- `part_window` seam for Octakit kit base override; `KITS_GATE` skips bank‚Üîpart coupling
-- Solid green scene-lock LEDs (no blink path)
-- ARP scene-lock values clamped to real knob ranges
-- MIDI CONTROL CC48/55/56 filter menu: **on hold** (not in this build)
-
-Shipped map: **`tools/midisc/HANDOFF.md`**. Technical map: **`docs/TECH.md`**.  
-Constants: `tools/midisc/memory_map.py`.
-
-## Rebuild from stock 1.40C
-
-Requirements: Python 3. Your own official **1.40C** (never commit/share it).
+## Build
 
 ```bash
-# 1) Obtain stock (optional helper)
 powershell -ExecutionPolicy Bypass -File scripts/fetch-os.ps1   # or scripts/fetch-os.sh
-
-# 2) Patch MAIN OS + repack flash image
 python tools/build_midisc40.py
-# or: $env:PYTHONPATH="tools"; python -m tools.midisc.build
 ```
 
-Pipeline inside the build:
+Writes **`MIDISC2.0.bin`** to your Desktop (splash `MIDISC2.0`). Flash from CF root ? OS UPGRADE.
 
-1. `ensure_stock()` ‚Äî use `out/raw/section_3_MAIN_OS.bin` if present, else
-   extract from `downloads/extracted/OCTATRACK_OS1.40C.syx`
-2. Assemble caves/stubs (`tools/midisc/*.py` + `ot3_asm.py`) and splice hooks
-3. `tools/repack_140fx.py` ‚Üí Desktop **`1.40MIDISC8.2.bin`** (splash `1.40MDIS82`, ‚â§10 chars)
-   (+ syx under `out/`; Desktop bin only)
+The build applies `tools/midisc/release20.json` to hash-checked stock MAIN. That manifest is the source of truth for this release.
 
-Optional (octabam compose): `python3 tools/gas_port.py` regenerates `gas/*.s` and
-proves byte-identity (needs `m68k-elf-binutils`).
+## Safety
 
-Then flash **that build‚Äôs** `.bin` (CF root ‚Üí OS UPGRADE). Details:
-`docs/FLASHING.md`.
+Modified OS can brick the unit; not affiliated with Elektron; flash at your own risk.  
+**Do not share built `.bin` files** (they contain Elektronís OS).
 
-### Sources
-
-| path | role |
-|------|------|
-| `tools/midisc/build.py` | place code, patch sites, call repack |
-| `tools/midisc/hold.py` | A/B hold store, dial, unlock, ARP clamp |
-| `tools/midisc/parts.py` | pack/unpack, save/reload, bank, `part_window` seam |
-| `tools/midisc/morph.py` | XF mix / morph / plock / write remix |
-| `tools/midisc/midi_filter.py` | MIDI CONTROL CC48/55/56 (disabled / on hold) |
-| `tools/midisc/scene_ui.py` | clear / copy / paste |
-| `tools/midisc/emit.py` | shared MSC helpers |
-| `tools/midisc/memory_map.py` | all 1.40C addresses |
-| `tools/gas_port.py` | emit/verify GNU-as caves for relocatable compose |
-| `tools/ot3_asm.py` | ColdFire assembler |
-| `tools/extract_main_os.py` | syx ‚Üí MAIN OS |
-| `tools/repack_140fx.py` | MAIN OS ‚Üí `.bin` / `.syx` |
-| `tools/syx_elektron.py`, `aplib_elektron.py` | ELEK container |
-
-## ‚ö†Ô∏è Safety
-
-Modified OS can brick the unit; not affiliated with Elektron; flash at your
-own risk. **Do not share built `.bin` / `.syx`** (they contain Elektron‚Äôs OS).
-Share this repo or the patcher page; everyone builds from their own 1.40C.
-
-*Octatrack* / *Elektron* ‚Äî trademarks of Elektron Music Machines MAV AB.
+*Octatrack* / *Elektron* ó trademarks of Elektron Music Machines MAV AB.
 
 ## License
 
-MIT for this repo‚Äôs code and docs. Not for Elektron firmware.
+MIT for this repoís code and docs. Not for Elektron firmware.

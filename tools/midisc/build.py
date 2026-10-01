@@ -42,7 +42,7 @@ from .midi_filter import (
     apply_midi_ctrl_filter,
     build_cc_tx_gate,
 )
-def main() -> None:
+def legacy_main() -> None:
     stock = ensure_stock()
     img = bytearray(stock)
 
@@ -700,6 +700,8 @@ def main() -> None:
     print(f"  CLIP={CLIP:#x}; CODE2={CODE2:#x}")
     print(f"  stubs {[f'{k}={v:#x}' for k, v in addrs.items()]}")
 
+
+from .release20 import main
 
 if __name__ == "__main__":
     main()
