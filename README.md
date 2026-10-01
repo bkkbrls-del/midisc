@@ -14,8 +14,9 @@ https://bkkbrls-del.github.io/midisc-patcher/
 3. **Active trig locks hold** — an unscened lock (including ARP OFF?ON) survives scene/XF refresh until the native lock ends.
 4. **CC before notes** — native CC values go out before same-track note-ons.
 5. **Crash fixes** — FUNC+REC2 and master-track descriptor repairs; scene scratch kept off native clipboards.
+6. **Pattern-commit Part sync** — when the sequencer commits ACT bank/pattern, MIDI scenes follow that pattern's Part immediately (next-step pattern changes included), without waiting for a PLEN cue.
 
-Everything else from 8.2 stays (track×32 isolation, unlocked CC path, Part save/reload freeze, etc.).
+Everything else from 8.2 stays (track-1 lock isolation, unlocked CC path, Part save/reload freeze, etc.).
 
 ## Build
 
