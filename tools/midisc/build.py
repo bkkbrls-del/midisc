@@ -701,7 +701,7 @@ def legacy_main() -> None:
     print(f"  stubs {[f'{k}={v:#x}' for k, v in addrs.items()]}")
 
 
-from .release20 import main
+from .release21 import main
 
 if __name__ == "__main__":
     main()

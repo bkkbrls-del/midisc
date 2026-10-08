@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build midisc MIDISC2.0."""
+"""Build midisc MIDISC2.1."""
 from __future__ import annotations
 import sys
 from pathlib import Path

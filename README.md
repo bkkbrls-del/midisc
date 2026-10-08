@@ -1,22 +1,11 @@
-# midisc — `MIDISC2.0`
+# midisc â€” `MIDISC2.1`
 
 ColdFire patch that adds **MIDI scene locks** to official Octatrack **OS 1.40C**.
 
 There is **no prebuilt firmware in this repo**. Rebuild from your own 1.40C.
 
-Browser patcher (still 8.2 until updated):  
+Browser patcher:  
 https://bkkbrls-del.github.io/midisc-patcher/
-
-## Changes from `1.40MIDISC8.2`
-
-1. **No first trig needed** — scenes / XF work before playback starts.
-2. **Timing** — scene changes land at the real queued pattern / Part boundary; manual Part confirm is immediate.
-3. **Active trig locks hold** — an unscened lock (including ARP OFF?ON) survives scene/XF refresh until the native lock ends.
-4. **CC before notes** — native CC values go out before same-track note-ons.
-5. **Crash fixes** — FUNC+REC2 and master-track descriptor repairs; scene scratch kept off native clipboards.
-6. **Pattern-commit Part sync** — when the sequencer commits ACT bank/pattern, MIDI scenes follow that pattern's Part immediately (next-step pattern changes included), without waiting for a PLEN cue.
-
-Everything else from 8.2 stays (track-1 lock isolation, unlocked CC path, Part save/reload freeze, etc.).
 
 ## Build
 
@@ -25,17 +14,17 @@ powershell -ExecutionPolicy Bypass -File scripts/fetch-os.ps1   # or scripts/fet
 python tools/build_midisc40.py
 ```
 
-Writes **`MIDISC2.0.bin`** to your Desktop (splash `MIDISC2.0`). Flash from CF root ? OS UPGRADE.
+Writes **`MIDISC2.1.bin`** to your Desktop (splash `MIDISC2.1`). Flash from CF root â†’ OS UPGRADE.
 
-The build applies `tools/midisc/release20.json` to hash-checked stock MAIN. That manifest is the source of truth for this release.
+The build applies `tools/midisc/release21.json` to hash-checked stock MAIN.
 
 ## Safety
 
 Modified OS can brick the unit; not affiliated with Elektron; flash at your own risk.  
-**Do not share built `.bin` files** (they contain Elektron’s OS).
+**Do not share built `.bin` files** (they contain Elektronâ€™s OS).
 
-*Octatrack* / *Elektron* — trademarks of Elektron Music Machines MAV AB.
+*Octatrack* / *Elektron* â€” trademarks of Elektron Music Machines MAV AB.
 
 ## License
 
-MIT for this repo’s code and docs. Not for Elektron firmware.
+MIT for this repoâ€™s code and docs. Not for Elektron firmware.
