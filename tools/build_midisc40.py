@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build midisc MIDISC2.1."""
+"""Build midisc MIDISC2.2 (exact MIDISC4.0 / midisc21 engine)."""
 from __future__ import annotations
 import sys
 from pathlib import Path

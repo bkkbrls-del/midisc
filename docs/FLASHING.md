@@ -1,4 +1,4 @@
-# Flashing a build of `1.40MIDISC8.2`
+# Flashing a build of `MIDISC2.2`
 
 This project does **not** ship a `.bin`. Build first:
 
@@ -6,15 +6,15 @@ This project does **not** ship a `.bin`. Build first:
 python tools/build_midisc40.py
 ```
 
-Output: `~/Desktop/1.40MIDISC8.2.bin` (splash `1.40MDIS82`) and
-`out/OCTATRACK_1.40MIDISC8.2.syx` (name may vary by repack helper).
+Output: `~/Desktop/MIDISC2.2.bin` (splash `MIDISC2.2`) and
+`out/OCTATRACK_MIDISC2.2.syx`.
 
 ## Install
 
 1. Back up projects.
-2. Copy **that build's** `1.40MIDISC8.2.bin` to the CompactFlash **root**.
+2. Copy **that build's** `MIDISC2.2.bin` to the CompactFlash **root**.
 3. On the unit: **OS UPGRADE** (same as an official update).
-4. Confirm version **`1.40MDIS82`**.
+4. Confirm version **`MIDISC2.2`**.
 
 ## Recovery
 

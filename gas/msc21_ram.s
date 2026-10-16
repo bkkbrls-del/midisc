@@ -1,4 +1,6 @@
-| MIDISC2.1 private RAM (12 arena pages). Linker-owned.
+| MIDISC2.2 private RAM (12 arena pages). Linker-owned.
+| Exact MIDISC4.0 engine (midisc21).
+
         .text
         .balign 16
         .globl msc21_ram
